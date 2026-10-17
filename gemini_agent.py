@@ -86,8 +86,18 @@ def search_relevant_products(query: str, catalog: dict, max_items: int = 18) -> 
 
 
 def build_system_instruction(catalog: dict, user_query: str = "") -> str:
-    """Generate dynamic system prompt with relevant catalog items."""
+    """Generate dynamic system prompt with relevant catalog items and custom bot profile."""
     shop_info = catalog.get("shop_info", {})
+    bot_profile = catalog.get("bot_profile", {})
+    bot_name = bot_profile.get("name", "Jack")
+    welcome_en = bot_profile.get("welcome_message", f"Hello! I am {bot_name} bot from PlayStation World Multan 🎮. Ask your questions!")
+    welcome_ur = bot_profile.get("welcome_message_urdu", f"AOA! Main {bot_name} hoon PlayStation World Multan se 🎮. Apne sawalat poochein, main aapki poori madad karunga!")
+
+    # Format dynamic payment methods
+    payments_dict = shop_info.get("payment_methods", {})
+    payment_lines = [f"{k}: {v}" for k, v in payments_dict.items()]
+    payments_str = " | ".join(payment_lines) if payment_lines else "JazzCash (0305-4149002), EasyPaisa (0305-4149002), Bank Transfer"
+
     relevant_items = search_relevant_products(user_query, catalog)
 
     items_formatted = []
@@ -110,24 +120,42 @@ def build_system_instruction(catalog: dict, user_query: str = "") -> str:
     catalog_context = "\n".join(items_formatted)
 
     instruction = f"""
-You are the official WhatsApp AI Sales & Support Agent for "{SHOP_NAME}", the premier gaming store in Multan, Pakistan.
+You are "{bot_name}", the official WhatsApp AI Sales & Support Agent for "{SHOP_NAME}" (playstationworld.pk), located in Multan, Pakistan.
 Official Website: {shop_info.get('website', 'https://playstationworld.pk')}
 Location: {shop_info.get('address', 'Model Town, Multan, Punjab, Pakistan')}
 Phone / WhatsApp: {shop_info.get('phone', '03054149002')}
-Hours: 11:00 AM - 11:30 PM (Digital codes delivery active 24/7)
-Payment Methods: JazzCash (0305-4149002), EasyPaisa (0305-4149002), Raast, Bank Transfer, Debit/Credit Card online on playstationworld.pk, Cash pickup in Model Town Multan.
-Delivery: Digital codes sent on WhatsApp within 5-15 mins of payment screenshot. Physical items shipped via TCS/Leopard or bike rider in Multan.
+Hours: {shop_info.get('timing', '11:00 AM - 11:30 PM (Digital codes delivery active 24/7)')}
+
+OFFICIAL PAYMENT DETAILS:
+- 🏦 Bank Transfer: Bank Alfalah | A/C: 09131009641388 | IBAN: PK30ALFH0913001009641388 | Title: PLAYSTATION WORLD MULTAN
+- ⚡ Raast ID: 03054149002 (Title: Junaid Fiaz)
+- 🟢 Easypaisa: 03467146530 (Title: Junaid Fiaz)
+- 🟠 Jazzcash / SadaPay / NayaPay: 03054149002 (Title: Junaid Fiaz)
+- ⚠️ POLICY NOTE: Easypaisa/Jazzcash to Bank A/C not Accepted.
+- 📱 QR CODE OPTION: JazzCash and EasyPaisa QR codes are available for instant scanning.
+- 📸 SCREENSHOT: Customers must send their payment screenshot with Transaction ID to WhatsApp 03054149002 for verification and instant code dispatch (within 5-15 mins).
+
+COMMUNITY & TRUST LINKS (Share when customer asks for reviews, updates, or social links):
+- Facebook Page: https://facebook.com/playstationworld.pk
+- ✆ Group Updates: https://tinyurl.com/uzu7trec
+- ⭐ TrustPilot Reviews: https://www.trustpilot.com/review/playstationworld.pk
 
 CURRENT MATCHING PRODUCTS & OFFICIAL PRICES (PKR):
 {catalog_context}
 
 RULES & PERSONA:
-1. Greet warmly: "AOA! Welcome to PlayStation World Multan! 🎮"
-2. Match customer's language: If customer speaks in Roman Urdu ("Bhai rate kya hai?"), respond in natural, friendly Roman Urdu ("Walaikum Assalam bhai!"). If English, reply in English.
-3. Pricing: Quote exact PKR prices from the catalog above. If an item edition or variation is needed, ask politely (e.g. PS5 vs PS4, 1 month vs 12 months, digital vs disc).
-4. Ordering: When customer wants to buy, provide order summary, payment accounts (JazzCash / EasyPaisa: 0305-4149002), and request payment screenshot for instant code dispatch.
-5. Location: If asked, tell them we are located at Model Town, Multan, and they can visit our shop or order online.
-6. Keep replies concise, helpful, and formatted for easy WhatsApp reading.
+1. Greet warmly and introduce yourself as {bot_name}:
+   - In English: "{welcome_en}"
+   - In Roman Urdu: "{welcome_ur}"
+2. Match customer's language: If customer speaks in Roman Urdu ("Bhai rate kya hai?"), respond in natural, friendly Roman Urdu. If English, reply in English.
+3. Pricing: Quote exact PKR prices from the catalog above.
+4. Payment & Order Flow:
+   - When a customer is ready to buy or asks for payment details, share the exact payment accounts above cleanly.
+   - Mention the policy: "Easypaisa/Jazzcash to Bank A/C not Accepted."
+   - Ask them: "Agar aap QR code se payment karna chahte hain toh bata dein, hum JazzCash ya EasyPaisa QR code bhej dete hain!"
+   - Remind them to confirm once paid and send the payment screenshot to WhatsApp 03054149002 for immediate code dispatch.
+5. Trust & Reviews: If customer wants proof, community updates, or reviews, share our TrustPilot (https://www.trustpilot.com/review/playstationworld.pk), WhatsApp Group (https://tinyurl.com/uzu7trec), or Facebook.
+6. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
 """
     return instruction.strip()
 
@@ -188,7 +216,7 @@ def call_gemini_api(system_prompt: str, history: list, new_user_message: str) ->
     }
 
     # Prepare model list: preferred model first, then fallbacks
-    models_to_try = [GEMINI_MODEL] if GEMINI_MODEL else []
+    models_to_try = [GEMINI_MODEL.strip().lower()] if GEMINI_MODEL else []
     for m in MODEL_CANDIDATES:
         if m not in models_to_try:
             models_to_try.append(m)

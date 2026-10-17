@@ -1,4 +1,9 @@
 {
+  "bot_profile": {
+    "name": "Jack",
+    "welcome_message": "Hello! I am Jack bot from PlayStation World Multan 🎮. Ask your questions!",
+    "welcome_message_urdu": "AOA! Main Jack hoon PlayStation World Multan se 🎮. Apne sawalat poochein, main aapki poori madad karunga!"
+  },
   "shop_info": {
     "name": "PlayStation World Multan",
     "website": "https://playstationworld.pk",
@@ -8,17 +13,20 @@
     "whatsapp": "+92 305 4149002",
     "timing": "Monday to Sunday: Open 24/7 online orders | Store support: 11:00 AM - 11:30 PM",
     "social_media": {
-      "facebook": "https://www.facebook.com/playstationworld.pk",
+      "facebook": "https://facebook.com/playstationworld.pk",
       "instagram": "https://www.instagram.com/playstationworld.pk",
-      "twitter_x": "https://x.com/Playstationworld"
+      "twitter_x": "https://x.com/Playstationworld",
+      "whatsapp_group_updates": "https://tinyurl.com/uzu7trec",
+      "trustpilot_reviews": "https://www.trustpilot.com/review/playstationworld.pk"
     },
     "payment_methods": {
-      "JazzCash": "0305-4149002 (Title: PlayStation World / Junaid)",
-      "EasyPaisa": "0305-4149002 (Title: PlayStation World / Junaid)",
-      "Raast_Transfers": "Available to 0305-4149002",
-      "Bank_Transfer": "Meezan Bank / Bank Alfalah / Online Bank Transfer (IBAN provided on checkout)",
-      "Debit_Credit_Cards": "Accepted online on playstationworld.pk",
-      "Cash_On_Pickup": "Available at Model Town, Multan store"
+      "Bank_Transfer": "Bank Alfalah | A/C: 09131009641388 | IBAN: PK30ALFH0913001009641388 | Title: PLAYSTATION WORLD MULTAN",
+      "Raast_ID": "03054149002 (Title: Junaid Fiaz)",
+      "Easypaisa": "03467146530 (Title: Junaid Fiaz)",
+      "JazzCash_SadaPay_NayaPay": "03054149002 (Title: Junaid Fiaz)",
+      "QR_Code": "JazzCash & EasyPaisa QR code available for quick payment scan",
+      "Policy_Note": "Easypaisa/Jazzcash to Bank A/C not Accepted",
+      "Screenshot_To": "Send payment screenshot to WhatsApp 03054149002"
     },
     "delivery": {
       "digital_codes": "Instant delivery via WhatsApp & Email (within 5-15 mins after payment verification)",

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 import config
 from gemini_agent import handle_incoming_message, clear_session, load_catalog_data, SESSION_STORAGE
-from whatsapp_client import send_whatsapp_text, mark_message_as_read
+from whatsapp_client import send_whatsapp_text, send_whatsapp_image, mark_message_as_read
 
 # Logging configuration
 logging.basicConfig(
@@ -49,6 +49,32 @@ def log_event(event_type: str, sender: str, text: str, reply: Optional[str] = No
     })
 
 
+def get_requested_qr_images(message_text: str) -> list:
+    """Detect if customer asks for QR code and return list of (file_path, caption, url_path)."""
+    msg = message_text.lower()
+    results = []
+
+    qr_triggers = ["qr", "qr code", "bar code", "barcode", "scan", "scanner"]
+    if any(t in msg for t in qr_triggers):
+        ep_path = STATIC_DIR / "qr" / "easypaisa_qr.jpg"
+        jc_path = STATIC_DIR / "qr" / "jazzcash_qr.jpg"
+
+        want_ep = "easypaisa" in msg or "easy paisa" in msg or "paisa" in msg
+        want_jc = "jazzcash" in msg or "jazz cash" in msg or "jazz" in msg
+
+        if (want_ep and want_jc) or (not want_ep and not want_jc):
+            if jc_path.exists():
+                results.append((str(jc_path), "JazzCash QR Code - Junaid Fiaz (03054149002)", "/static/qr/jazzcash_qr.jpg"))
+            if ep_path.exists():
+                results.append((str(ep_path), "Easypaisa QR Code - Junaid Fiaz (03467146530)", "/static/qr/easypaisa_qr.jpg"))
+        elif want_jc and jc_path.exists():
+            results.append((str(jc_path), "JazzCash QR Code - Junaid Fiaz (03054149002)", "/static/qr/jazzcash_qr.jpg"))
+        elif want_ep and ep_path.exists():
+            results.append((str(ep_path), "Easypaisa QR Code - Junaid Fiaz (03467146530)", "/static/qr/easypaisa_qr.jpg"))
+
+    return results
+
+
 def process_whatsapp_message_task(sender_phone: str, message_text: str, message_id: str):
     """
     Background worker that runs the Gemini AI model and sends the reply via WhatsApp Cloud API.
@@ -65,10 +91,16 @@ def process_whatsapp_message_task(sender_phone: str, message_text: str, message_
         ai_reply = handle_incoming_message(sender_phone, message_text)
         logger.info(f"Generated AI reply for {sender_phone}: {ai_reply[:80]}...")
 
-        # 3. Send reply to WhatsApp
+        # 3. Send text reply to WhatsApp
         send_res = send_whatsapp_text(sender_phone, ai_reply)
 
-        # 4. Record event log
+        # 4. If customer requested QR code, send the QR code image(s) as well!
+        qr_images = get_requested_qr_images(message_text)
+        for img_path, caption, _ in qr_images:
+            logger.info(f"Sending QR code image ({caption}) to {sender_phone}...")
+            send_whatsapp_image(sender_phone, img_path, caption=caption)
+
+        # 5. Record event log
         log_event("whatsapp_incoming", sender_phone, message_text, ai_reply)
 
     except Exception as e:
@@ -215,10 +247,13 @@ async def test_chat(req: TestChatRequest):
     reply = handle_incoming_message(req.session_id, req.message)
     log_event("web_simulator", req.session_id, req.message, reply)
 
+    qr_imgs = [img[2] for img in get_requested_qr_images(req.message)]
+
     return {
         "session_id": req.session_id,
         "user_message": req.message,
-        "reply": reply
+        "reply": reply,
+        "qr_images": qr_imgs
     }
 
 
