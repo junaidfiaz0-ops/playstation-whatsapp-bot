@@ -104,32 +104,46 @@ def is_payment_confirmation(text: str) -> bool:
     """
     Check if the user is confirming that they made the payment.
     Handles ANY payment method: Bank Alfalah, Raast, JazzCash, EasyPaisa, SadaPay, NayaPay, or QR Code.
+    Strictly distinguishes requests to pay/receive QR code from actual completed payment confirmation.
     """
     t = text.lower().strip()
     
-    # Specific affirmative phrases across English, Roman Urdu, and slang
+    # 1. Negative guard: If user is asking how to pay, expressing desire to pay, or asking for QR / account details
+    # e.g. "i want to pay using qr code", "send qr code", "share qr codes", "can i pay with jazzcash", "qr code bhejo"
+    intent_to_pay_patterns = [
+        r"\b(want\s*to|wants\s*to|how\s*to|can\s*i|going\s*to)\s*(pay|transfer|send)\b",
+        r"\b(send|share|give|need|bhejo|bhej\s*do|bhej\s*dein|dikhao|dikha\s*dein)\s*(me\s*)?(the\s*)?(qr|qr\s*code|barcode|account|details)\b",
+        r"\b(qr|qr\s*code|barcode|account)\s*(bhejo|send|share|dein|do|chahiye)\b",
+        r"\b(pay\s*karna|pay\s*karni|karna\s*hai|karni\s*hai|karna\s*chahta|karna\s*chahti|krna\s*hai)\b"
+    ]
+    for ip in intent_to_pay_patterns:
+        if re.search(ip, t):
+            return False
+
+    # 2. Positive confirmation patterns: Explicit completed payment / past-tense actions only
     patterns = [
-        # Explicit payment verbs & status
-        r"\b(paid|already\s*paid|payment\s*done|payment\s*sent|payment\s*made|payment\s*completed)\b",
+        # Explicit completed payment verbs & status in English
+        r"\b(paid|already\s*paid|i\s*(have\s*)?paid|just\s*paid)\b",
+        r"\bpayment\s*(done|sent|made|completed|successful|transferred)\b",
         r"\b(done\s*payment|amount\s*paid|money\s*sent|funds\s*transferred|transfer\s*done)\b",
-        r"\b(screenshot\s*sent|screenshot\s*bhej\s*(di|diya|diye|dya))\b",
+        r"\b(screenshot\s*sent|sent\s*the\s*(money|payment|screenshot))\b",
+        r"\bpaid\s*(via|through|using|to|with)\s*(qr|bank|raast|jazzcash|easypaisa|sadapay|nayapay|account)\b",
         
-        # Method-specific confirmations (with or without QR)
-        r"\b(qr|bank|raast|jazzcash|jazz\s*cash|easypaisa|easy\s*paisa|sadapay|nayapay|account)\b.*(pay|paid|transfer|trf|send|sent|bhej|kar|kr|done)",
-        r"(pay|paid|transfer|trf|send|sent|bhej|kar|kr)\b.*(qr|bank|raast|jazzcash|jazz\s*cash|easypaisa|easy\s*paisa|sadapay|nayapay|account)",
+        # Method-specific completed transfer in Roman Urdu
+        r"\b(qr|bank|raast|jazzcash|jazz\s*cash|easypaisa|easy\s*paisa|sadapay|nayapay|account)\s*(se|par|pe|me|mein)?\s*(kar|kr|bhej|send|transfer|pay)\s*(di|diya|diye|dya|dia|hai|hain)\b",
         
-        # Roman Urdu / Hindi confirmations
-        r"\b(pay|payment)\s*(kar|kr)\s*(di|diya|diye|dya|dia)\b",
-        r"\b(transfer|trf)\s*(kar|kr)\s*(di|diya|diye|dya|dia|done)\b",
-        r"\b(paise|pesay|pese|amount)\s*(bhej|send|transfer|kar|kr)\s*(di|diya|diye|dya|dia)\b",
-        r"\b(bhej|bheej|send)\s*(di|diya|diye|dya|dia|dien|di hai|diya hai|diye hain)\b",
-        r"\b(kar|kr)\s*(di|diya|diye|dya|dia|di hai|diya hai|diye hain)\b",
+        # General Roman Urdu / Hindi completions
+        r"\b(pay|payment)\s*(kar|kr)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(transfer|trf)\s*(kar|kr)\s*(di|diya|diye|dya|dia|done|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(paise|pesay|pese|amount)\s*(bhej|send|transfer|kar|kr)\s*(di|diya|diye|dya|dia|diye\s*hain)\b",
+        r"\b(bhej|bheej|send)\s*(di|diya|diye|dya|dia|dien|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(kar|kr)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
         r"\b(ho\s*gaya|ho\s*gya|ho\s*gayi|ho\s*gyi|ho\s*gaya\s*hai|ho\s*gya\s*hai)\b",
         r"\b(bayan|ada)\s*(kar|kr)\s*(di|diya|diye|dya)\b",
         r"\b(yes\s*paid|ha\s*paid|haan\s*paid|ji\s*paid)\b",
         
         # Direct standalone confirmation words
-        r"^(paid|done|yes|haan|ha|ji|ok done|ho gaya|kar diya|bhej diya|kar di|bhej di|sent)$"
+        r"^(paid|done|yes\s*paid|done\s*payment|payment\s*done|ho\s*gaya|kar\s*diya|bhej\s*diya|kar\s*di|bhej\s*di|sent)$"
     ]
     for pattern in patterns:
         if re.search(pattern, t):
