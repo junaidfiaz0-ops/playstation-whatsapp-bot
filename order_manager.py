@@ -92,6 +92,74 @@ def get_last_discussed_product(user_id: str) -> Optional[dict]:
     return None
 
 
+def set_presented_options(user_id: str, options: List[dict]):
+    """Store the options/candidates presented to customer for selection."""
+    cid = clean_user_id(user_id)
+    if cid not in ACTIVE_ORDERS:
+        ACTIVE_ORDERS[cid] = {}
+    ACTIVE_ORDERS[cid]["presented_options"] = [
+        {"id": opt.get("id"), "title": opt.get("title"), "price_pkr": opt.get("price_pkr", 0)}
+        for opt in options
+    ]
+    save_orders()
+
+
+def get_presented_options(user_id: str) -> List[dict]:
+    """Retrieve options presented to the customer."""
+    cid = clean_user_id(user_id)
+    entry = ACTIVE_ORDERS.get(cid)
+    if entry and isinstance(entry, dict):
+        return entry.get("presented_options", [])
+    return []
+
+
+def clear_presented_options(user_id: str):
+    """Clear presented options once selection is completed."""
+    cid = clean_user_id(user_id)
+    if cid in ACTIVE_ORDERS and "presented_options" in ACTIVE_ORDERS[cid]:
+        del ACTIVE_ORDERS[cid]["presented_options"]
+        save_orders()
+
+
+def parse_option_selection(text: str, options: list) -> Optional[dict]:
+    """Check if customer's response is selecting one of the presented options (e.g. 'option 1', '1', 'first')."""
+    if not options:
+        return None
+    t = text.lower().strip()
+    m = re.search(r'\b(?:option|opt|number|no\.?)\s*([1-9])\b', t)
+    if m:
+        idx = int(m.group(1)) - 1
+        if 0 <= idx < len(options):
+            return options[idx]
+    if t in ['1', '2', '3', '4', '5']:
+        idx = int(t) - 1
+        if 0 <= idx < len(options):
+            return options[idx]
+    if ('first' in t or 'pehla' in t or 'pehli' in t) and len(options) >= 1:
+        return options[0]
+    if ('second' in t or 'doosra' in t or 'dusra' in t or 'dusri' in t) and len(options) >= 2:
+        return options[1]
+    if ('third' in t or 'teesra' in t or 'tesra' in t) and len(options) >= 3:
+        return options[2]
+    return None
+
+
+def is_order_placement_request(text: str) -> bool:
+    """Check if customer is confirming or asking the bot to place the order on website."""
+    t = text.lower().strip()
+    patterns = [
+        r"\b(place\s*(the\s*)?order|place\s*it|order\s*it|order\s*this|buy\s*this|order\s*kardo|order\s*kar\s*do|order\s*krdo|order\s*kardein)\b",
+        r"\b(place\s*order\s*for\s*me|order\s*for\s*me|on\s*website|website\s*pe|website\s*par|website\s*par\s*order)\b",
+        r"\b(like\s*to\s*place\s*order|want\s*to\s*place\s*order|ready\s*to\s*order)\b",
+        r"\b(haan\s*(order|place|kardo|kar\s*do)|yes\s*(place|order|please|do\s*it))\b",
+        r"^(yes|yes\s*please|yeah|yep|haan|ji|ji\s*haan|kardo|kar\s*do|krdo|kr\s*do|bilkul|confirm|done)$"
+    ]
+    for p in patterns:
+        if re.search(p, t):
+            return True
+    return False
+
+
 
 def clear_active_order(user_id: str):
     """Remove active order after completion or cancellation."""
@@ -193,6 +261,9 @@ GENERIC_STOP_WORDS = {
     'one', 'ones', 'place', 'order', 'buy', 'purchase', 'checkout', 'get', 'need', 
     'want', 'send', 'details', 'qr', 'code', 'payment', 'yes', 'no', 'ok', 'okay',
     'can', 'you', 'i', 'we', 'my', 'your', 'sir', 'bro', 'bhai', 'game', 'games',
+    'like', 'would', 'will', 'website', 'site', 'web', 'link', 'online',
+    'option', 'options', 'opt', 'choice', 'selection', 'select', 'selected',
+    'confirm', 'book', 'booking', 'me', 'us', 'done',
     'batao', 'bata', 'hai', 'hain', 'ha', 'mujhe', 'mujy', 'mjhe', 'chahiye', 'chaheay',
     'lena', 'leni', 'lene', 'khareedna', 'kharidna', 'kharidni', 'mangwana', 'mangwani',
     'karna', 'karni', 'karne', 'karo', 'kardo', 'kardein', 'karein',

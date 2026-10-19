@@ -11,6 +11,11 @@ from order_manager import (
     set_active_order,
     is_payment_confirmation,
     is_purchase_intent,
+    is_order_placement_request,
+    set_presented_options,
+    get_presented_options,
+    clear_presented_options,
+    parse_option_selection,
     find_product_or_ambiguity,
     find_best_product_match,
     find_best_product_match_with_history,
@@ -362,8 +367,9 @@ RULES & PERSONA:
 4. Trust & Reviews: If customer wants proof, community updates, or reviews, share our TrustPilot (https://www.trustpilot.com/review/playstationworld.pk), WhatsApp Group (https://tinyurl.com/uzu7trec), or Facebook.
 5. Product Context Continuity: When a customer asks to order or buy 'this product', 'it', 'yeh', 'yehi', or refers to what was discussed in the immediately preceding response, ALWAYS stick strictly to that exact product. Never invent or switch to a different product.
 6. Ambiguity & Platform Confirmation: If a game or product is available for multiple platforms (e.g. PlayStation vs Xbox) or editions, and the customer has not specified which one, ALWAYS present the choices and ask them to confirm before placing an order.
-7. Natural Chat Flow: DO NOT repeat introductory greetings ("Hello! I am Jack from PlayStation World Multan") on subsequent messages after the initial greeting turn. Speak naturally like a real human in a conversation.
-8. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
+7. Order Placement on Website: When a customer selects an option, ask: "Would you like me to place this order on our website for you?" When they say "Yes" or ask you to place it, NEVER tell them to visit the site or add to cart themselves! The order is automatically created by the system on playstationworld.pk, and you share their Order # and payment methods right here.
+8. Natural Chat Flow: DO NOT repeat introductory greetings ("Hello! I am Jack from PlayStation World Multan") on subsequent messages after the initial greeting turn. Speak naturally like a real human in a conversation.
+9. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
 """
     return instruction.strip()
 
@@ -618,11 +624,62 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
             return reply
 
     # -------------------------------------------------------------
-    # 2. PRODUCT CONTEXT TRACKING, AMBIGUITY CHECK & ORDER CREATION
+    # 2. OPTION SELECTION & WEBSITE ORDER CONFIRMATION FLOW
     # -------------------------------------------------------------
     active_order = get_active_order(user_id)
+    last_discussed = get_last_discussed_product(user_id)
 
-    # Resolve product and check for platform/edition ambiguity across all catalog products
+    # A. Check if customer is selecting an option (e.g. "option 1", "option 2", "1", "2")
+    presented_options = get_presented_options(user_id)
+    selected_option = parse_option_selection(message_text, presented_options)
+
+    if selected_option:
+        set_last_discussed_product(user_id, selected_option)
+        clear_presented_options(user_id)
+        prod_title = selected_option.get("title", "Game")
+        prod_price = selected_option.get("price_pkr", 0)
+
+        if user_lang == "en":
+            reply = (
+                f"Excellent choice! You selected **{prod_title}** for **PKR {prod_price:,}**.\n\n"
+                f"Would you like me to place this order on our website (*playstationworld.pk*) for you? Reply **\"Yes\"** to confirm!"
+            )
+        else:
+            reply = (
+                f"Zabardast choice! Aapne **{prod_title}** select kiya hai (Price: **PKR {prod_price:,}**).\n\n"
+                f"Kya main aapka yeh order hamari website (*playstationworld.pk*) par place kar doon? Confirm karne ke liye **\"Haan\"** ya **\"Yes\"** likhein!"
+            )
+        history.append({"role": "user", "text": message_text})
+        history.append({"role": "model", "text": reply})
+        return reply
+
+    # B. Check if customer says "yes" or asks bot to place order on website
+    if is_order_placement_request(message_text) and last_discussed:
+        prod_id = last_discussed.get("id")
+        prod_title = last_discussed.get("title")
+        price = last_discussed.get("price_pkr", 0)
+
+        if not active_order or active_order.get("product_id") != prod_id or active_order.get("status") != "pending":
+            order_id, total = create_wc_order(
+                customer_phone=user_id,
+                customer_name=customer_name,
+                product_id=prod_id,
+                quantity=1,
+                product_title=prod_title,
+                price=price
+            )
+            if order_id:
+                set_active_order(
+                    user_id=user_id,
+                    order_id=order_id,
+                    product_id=prod_id,
+                    title=prod_title,
+                    total=total or str(price),
+                    status="pending"
+                )
+                active_order = get_active_order(user_id)
+
+    # C. Product resolution & ambiguity check across all catalog items
     matched_item, is_ambiguous, candidates, ambig_reason = find_product_or_ambiguity(
         message_text, history, catalog, user_id=user_id
     )
@@ -634,21 +691,20 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
             "candidates": candidates,
             "reason": ambig_reason
         }
-        # Keep game franchise context in memory for the next turn
+        # Save options so user can reply "option 1", "1", etc.
+        set_presented_options(user_id, candidates)
         first_cand = candidates[0]
         set_last_discussed_product(user_id, first_cand)
 
     elif matched_item:
         set_last_discussed_product(user_id, matched_item)
 
-        # Check purchase intent (e.g. "place order for this product", "buy it", "for xbox")
-        # ONLY create WooCommerce order when product is fully confirmed / unambiguous!
-        if is_purchase_intent(message_text):
+        # Direct purchase intent with fully disambiguated product
+        if is_purchase_intent(message_text) or is_order_placement_request(message_text):
             prod_id = matched_item.get("id")
             prod_title = matched_item.get("title")
             price = matched_item.get("price_pkr", 0)
 
-            # If no active order or different product or previous order completed
             if not active_order or active_order.get("product_id") != prod_id or active_order.get("status") != "pending":
                 order_id, total = create_wc_order(
                     customer_phone=user_id,
