@@ -14,6 +14,8 @@ from pydantic import BaseModel
 import config
 from gemini_agent import handle_incoming_message, clear_session, load_catalog_data, SESSION_STORAGE
 from whatsapp_client import send_whatsapp_text, send_whatsapp_image, mark_message_as_read
+from woocommerce_client import is_woocommerce_configured
+from order_manager import ACTIVE_ORDERS
 
 # Logging configuration
 logging.basicConfig(
@@ -75,20 +77,20 @@ def get_requested_qr_images(message_text: str) -> list:
     return results
 
 
-def process_whatsapp_message_task(sender_phone: str, message_text: str, message_id: str):
+def process_whatsapp_message_task(sender_phone: str, message_text: str, message_id: str, sender_name: str = "Customer"):
     """
     Background worker that runs the Gemini AI model and sends the reply via WhatsApp Cloud API.
     Executed asynchronously so Meta webhook receives 200 OK immediately without timeouts.
     """
     try:
-        logger.info(f"Processing incoming WhatsApp message from {sender_phone}: {message_text}")
+        logger.info(f"Processing incoming WhatsApp message from {sender_name} ({sender_phone}): {message_text}")
         
         # 1. Mark message as read (shows blue tick to customer)
         if message_id:
             mark_message_as_read(message_id)
 
-        # 2. Generate intelligent response using Gemini Agent
-        ai_reply = handle_incoming_message(sender_phone, message_text)
+        # 2. Generate intelligent response using Gemini Agent (includes WC Order integration)
+        ai_reply = handle_incoming_message(sender_phone, message_text, customer_name=sender_name)
         logger.info(f"Generated AI reply for {sender_phone}: {ai_reply[:80]}...")
 
         # 3. Send text reply to WhatsApp
@@ -170,7 +172,8 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                             process_whatsapp_message_task,
                             sender_phone,
                             text_body,
-                            msg_id
+                            msg_id,
+                            sender_name
                         )
 
                 # Interactive button replies or list selections
@@ -188,7 +191,8 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                             process_whatsapp_message_task,
                             sender_phone,
                             selected_text,
-                            msg_id
+                            msg_id,
+                            sender_name
                         )
 
     return JSONResponse({"status": "received"})
@@ -221,6 +225,8 @@ async def get_status():
         "gemini_model": config.GEMINI_MODEL,
         "whatsapp_configured": bool(config.WHATSAPP_TOKEN and config.WHATSAPP_PHONE_NUMBER_ID),
         "whatsapp_verify_token": config.WHATSAPP_VERIFY_TOKEN,
+        "woocommerce_configured": is_woocommerce_configured(),
+        "active_orders_count": len(ACTIVE_ORDERS),
         "active_chat_sessions": len(SESSION_STORAGE),
         "catalog_stats": {
             "subscriptions": total_subscriptions,
@@ -232,6 +238,7 @@ async def get_status():
 
 class TestChatRequest(BaseModel):
     session_id: str = "simulator-test-user"
+    customer_name: Optional[str] = "Customer"
     message: str
 
 
@@ -244,7 +251,7 @@ async def test_chat(req: TestChatRequest):
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    reply = handle_incoming_message(req.session_id, req.message)
+    reply = handle_incoming_message(req.session_id, req.message, customer_name=req.customer_name or "Customer")
     log_event("web_simulator", req.session_id, req.message, reply)
 
     qr_imgs = [img[2] for img in get_requested_qr_images(req.message)]
@@ -303,6 +310,9 @@ class SettingsPayload(BaseModel):
     whatsapp_token: Optional[str] = None
     whatsapp_phone_number_id: Optional[str] = None
     whatsapp_verify_token: Optional[str] = None
+    woocommerce_url: Optional[str] = None
+    wc_consumer_key: Optional[str] = None
+    wc_consumer_secret: Optional[str] = None
 
 
 @app.post("/api/settings")
@@ -338,6 +348,18 @@ async def update_settings(payload: SettingsPayload):
     if payload.whatsapp_verify_token is not None:
         current_env["WHATSAPP_VERIFY_TOKEN"] = payload.whatsapp_verify_token
         config.WHATSAPP_VERIFY_TOKEN = payload.whatsapp_verify_token
+
+    if payload.woocommerce_url is not None:
+        current_env["WOOCOMMERCE_URL"] = payload.woocommerce_url
+        config.WOOCOMMERCE_URL = payload.woocommerce_url
+
+    if payload.wc_consumer_key is not None:
+        current_env["WC_CONSUMER_KEY"] = payload.wc_consumer_key
+        config.WC_CONSUMER_KEY = payload.wc_consumer_key
+
+    if payload.wc_consumer_secret is not None:
+        current_env["WC_CONSUMER_SECRET"] = payload.wc_consumer_secret
+        config.WC_CONSUMER_SECRET = payload.wc_consumer_secret
 
     # Write back to .env
     with open(env_path, "w", encoding="utf-8") as f:

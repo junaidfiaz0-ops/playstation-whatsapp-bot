@@ -23,3 +23,8 @@ PORT = int(os.getenv("PORT", "8000"))
 # Store Details
 SHOP_NAME = os.getenv("SHOP_NAME", "PlayStation World Multan")
 CATALOG_PATH = BASE_DIR / "catalog.json"
+
+# WooCommerce API Settings
+WOOCOMMERCE_URL = os.getenv("WOOCOMMERCE_URL", "https://playstationworld.pk").rstrip("/")
+WC_CONSUMER_KEY = os.getenv("WC_CONSUMER_KEY", "").strip()
+WC_CONSUMER_SECRET = os.getenv("WC_CONSUMER_SECRET", "").strip()
