@@ -10,7 +10,12 @@ from order_manager import (
     set_active_order,
     is_payment_confirmation,
     is_purchase_intent,
-    find_best_product_match_with_history
+    find_best_product_match,
+    find_best_product_match_with_history,
+    set_last_discussed_product,
+    get_last_discussed_product,
+    clean_token,
+    GENERIC_STOP_WORDS
 )
 from woocommerce_client import create_wc_order, update_order_to_processing
 
@@ -38,13 +43,13 @@ def load_catalog_data() -> dict:
     return {}
 
 
-def search_relevant_products(query: str, catalog: dict, max_items: int = 18) -> list:
+def search_relevant_products(query: str, catalog: dict, max_items: int = 18, last_product: Optional[dict] = None) -> list:
     """
     Smart search that finds relevant catalog products for the customer's query.
     Keeps the prompt lightweight and responses ultra-fast (<2s).
     """
-    query_lower = query.lower()
-    words = set(re.findall(r'[a-zA-Z0-9]+', query_lower))
+    raw_words = re.findall(r'[a-zA-Z0-9]+', query.lower())
+    words = [clean_token(w) for w in raw_words if clean_token(w) not in GENERIC_STOP_WORDS]
 
     all_items = (
         catalog.get("subscriptions", []) +
@@ -55,26 +60,39 @@ def search_relevant_products(query: str, catalog: dict, max_items: int = 18) -> 
     scored_items = []
     for item in all_items:
         title = item.get("title", "").lower()
+        title_tokens = [clean_token(w) for w in re.findall(r'[a-zA-Z0-9]+', title)]
+        title_norm = ' ' + ' '.join(title_tokens) + ' '
         cats = " ".join(item.get("categories", [])).lower()
         score = 0
 
-        # Exact title match
-        if title in query_lower:
-            score += 10
+        # Exact adjacent pairs match (e.g. '2 month', 'game pass')
+        for i in range(len(words) - 1):
+            two_words = f" {words[i]} {words[i+1]} "
+            if two_words in title_norm:
+                score += 30
 
-        # Keyword matching
-        for word in words:
-            if len(word) > 2:
-                if word in title:
-                    score += 4
-                elif word in cats:
-                    score += 2
+        for w in words:
+            pattern = r'\b' + re.escape(w) + r'\b'
+            if re.search(pattern, title_norm):
+                if w.isdigit():
+                    score += 20
+                else:
+                    score += 8
+            elif re.search(pattern, cats):
+                score += 2
 
         if score > 0:
             scored_items.append((score, item))
 
     scored_items.sort(key=lambda x: x[0], reverse=True)
     matched = [item for _, item in scored_items[:max_items]]
+
+    # If a product was recently discussed, ensure it is at the very front of matched items
+    if last_product:
+        last_id = last_product.get("id")
+        matched = [m for m in matched if m.get("id") != last_id]
+        full_last_item = next((item for item in all_items if item.get("id") == last_id), last_product)
+        matched.insert(0, full_last_item)
 
     # If few or no matches, provide top popular featured products
     if len(matched) < 6:
@@ -92,7 +110,7 @@ def search_relevant_products(query: str, catalog: dict, max_items: int = 18) -> 
     return matched
 
 
-def build_system_instruction(catalog: dict, user_query: str = "", active_order: Optional[dict] = None) -> str:
+def build_system_instruction(catalog: dict, user_query: str = "", active_order: Optional[dict] = None, last_product: Optional[dict] = None) -> str:
     """Generate dynamic system prompt with relevant catalog items, order state, and bot profile."""
     shop_info = catalog.get("shop_info", {})
     bot_profile = catalog.get("bot_profile", {})
@@ -100,7 +118,7 @@ def build_system_instruction(catalog: dict, user_query: str = "", active_order: 
     welcome_en = bot_profile.get("welcome_message", f"Hello! I am {bot_name} bot from PlayStation World Multan 🎮. Ask your questions!")
     welcome_ur = bot_profile.get("welcome_message_urdu", f"AOA! Main {bot_name} hoon PlayStation World Multan se 🎮. Apne sawalat poochein, main aapki poori madad karunga!")
 
-    relevant_items = search_relevant_products(user_query, catalog)
+    relevant_items = search_relevant_products(user_query, catalog, last_product=last_product)
 
     items_formatted = []
     for item in relevant_items:
@@ -120,6 +138,21 @@ def build_system_instruction(catalog: dict, user_query: str = "", active_order: 
         items_formatted.append(f"- {title} -> {price_str}{stock}{options}{link}")
 
     catalog_context = "\n".join(items_formatted)
+
+    last_product_banner = ""
+    if last_product and not (active_order and active_order.get("status") == "pending"):
+        last_product_banner = f"""
+=====================================================
+RECENTLY DISCUSSED PRODUCT:
+- Product ID: #{last_product.get('id')}
+- Product Title: {last_product.get('title')}
+- Official Price: PKR {last_product.get('price_pkr')}
+
+CRITICAL PRODUCT CONTINUITY RULE:
+When the customer refers to "this product", "it", "yeh", "order this", "place order", or asks to buy without explicitly naming a new game, they are referring to the product discussed above: "{last_product.get('title')}".
+Always maintain this product context. Never switch or pick an unrelated game!
+=====================================================
+"""
 
     order_banner = ""
     if active_order and active_order.get("status") == "pending":
@@ -165,6 +198,7 @@ COMMUNITY & TRUST LINKS (Share when customer asks for reviews, updates, or socia
 - ✆ Group Updates: https://tinyurl.com/uzu7trec
 - ⭐ TrustPilot Reviews: https://www.trustpilot.com/review/playstationworld.pk
 
+{last_product_banner}
 {order_banner}
 
 CURRENT MATCHING PRODUCTS & OFFICIAL PRICES (PKR):
@@ -182,7 +216,8 @@ RULES & PERSONA:
    - Ask them: "Agar aap QR code se payment karna chahte hain toh bata dein, hum JazzCash ya EasyPaisa QR code bhej dete hain!"
    - Remind them to confirm once paid and send the payment screenshot to WhatsApp 03054149002 for immediate code dispatch.
 5. Trust & Reviews: If customer wants proof, community updates, or reviews, share our TrustPilot (https://www.trustpilot.com/review/playstationworld.pk), WhatsApp Group (https://tinyurl.com/uzu7trec), or Facebook.
-6. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
+6. Product Context Continuity: When a customer asks to order or buy 'this product', 'it', 'yeh', 'yehi', or refers to what was discussed in the immediately preceding response, ALWAYS stick strictly to that exact product. Never invent or switch to a different product.
+7. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
 """
     return instruction.strip()
 
@@ -391,12 +426,20 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
             return reply
 
     # -------------------------------------------------------------
-    # 2. PURCHASE INTENT / ORDER CREATION FLOW
+    # 2. PRODUCT CONTEXT TRACKING & ORDER CREATION FLOW
     # -------------------------------------------------------------
     active_order = get_active_order(user_id)
+
+    # 1. Track any explicitly mentioned product in the customer's query
+    explicit_match = find_best_product_match(message_text, catalog)
+    if explicit_match:
+        set_last_discussed_product(user_id, explicit_match)
+
+    # 2. Check purchase intent (e.g. "place order for this product", "buy it", "yeh chahiye")
     if is_purchase_intent(message_text):
-        matched_item = find_best_product_match_with_history(message_text, history, catalog)
+        matched_item = find_best_product_match_with_history(message_text, history, catalog, user_id=user_id)
         if matched_item:
+            set_last_discussed_product(user_id, matched_item)
             prod_id = matched_item.get("id")
             prod_title = matched_item.get("title")
             price = matched_item.get("price_pkr", 0)
@@ -425,7 +468,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
     # -------------------------------------------------------------
     # 3. AI RESPONSE GENERATION
     # -------------------------------------------------------------
-    system_prompt = build_system_instruction(catalog, user_query=message_text, active_order=active_order)
+    last_discussed = get_last_discussed_product(user_id)
+    system_prompt = build_system_instruction(catalog, user_query=message_text, active_order=active_order, last_product=last_discussed)
     ai_reply = call_gemini_api(system_prompt, history, message_text)
 
     # Update conversation history
