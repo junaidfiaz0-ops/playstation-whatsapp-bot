@@ -6,10 +6,12 @@ from typing import Dict, List, Optional
 import requests
 from config import GEMINI_API_KEY, GEMINI_MODEL, SHOP_NAME, CATALOG_PATH
 from order_manager import (
+    clean_user_id,
     get_active_order,
     set_active_order,
     is_payment_confirmation,
     is_purchase_intent,
+    find_product_or_ambiguity,
     find_best_product_match,
     find_best_product_match_with_history,
     set_last_discussed_product,
@@ -157,13 +159,19 @@ def detect_user_language(text: str, current_pref: str = "en") -> str:
     return current_pref
 
 
-def build_system_instruction(catalog: dict, user_query: str = "", active_order: Optional[dict] = None, last_product: Optional[dict] = None, user_lang: str = "en") -> str:
-    """Generate dynamic system prompt with relevant catalog items, order state, and bot profile."""
+def build_system_instruction(
+    catalog: dict,
+    user_query: str = "",
+    active_order: Optional[dict] = None,
+    last_product: Optional[dict] = None,
+    user_lang: str = "en",
+    is_new_conversation: bool = False,
+    ambiguous_info: Optional[dict] = None
+) -> str:
+    """Generate dynamic system prompt with relevant catalog items, order state, bot profile, and ambiguity rules."""
     shop_info = catalog.get("shop_info", {})
     bot_profile = catalog.get("bot_profile", {})
     bot_name = bot_profile.get("name", "Jack")
-    welcome_en = bot_profile.get("welcome_message", f"Hello! I am {bot_name} from PlayStation World Multan 🎮. Ask your questions!")
-    welcome_ur = bot_profile.get("welcome_message_urdu", f"AOA! Main {bot_name} hoon PlayStation World Multan se 🎮. Apne sawalat poochein, main aapki poori madad karunga!")
 
     relevant_items = search_relevant_products(user_query, catalog, last_product=last_product)
 
@@ -187,23 +195,68 @@ def build_system_instruction(catalog: dict, user_query: str = "", active_order: 
     catalog_context = "\n".join(items_formatted)
 
     if user_lang == "en":
-        lang_directive = """
+        if is_new_conversation:
+            greeting_rule = 'Start your response with: "Hello! I am Jack from PlayStation World Multan 🎮."'
+        else:
+            greeting_rule = 'CRITICAL: DO NOT say "Hello! I am Jack from PlayStation World Multan 🎮." or re-introduce yourself! This is an ONGOING conversation. Reply directly and naturally without repeating your name or store intro.'
+
+        lang_directive = f"""
 =====================================================
 🔴 CRITICAL MANDATORY DIRECTIVE: YOU MUST REPLY 100% IN ENGLISH
 The customer is communicating in ENGLISH.
 You MUST write your ENTIRE response in clear, polite ENGLISH.
 ABSOLUTELY NO Roman Urdu words or phrases (NO "AOA", NO "Main Jack hoon", NO "aap", NO "bhai", NO "shukriya", NO "dein", NO "karein").
-Start your response with: "Hello! I am Jack from PlayStation World Multan 🎮."
+{greeting_rule}
 Every single sentence, explanation, price quote, and payment account detail MUST be completely in ENGLISH.
 =====================================================
 """
     else:
-        lang_directive = """
+        if is_new_conversation:
+            greeting_rule = 'Start your response with: "AOA! Main Jack hoon PlayStation World Multan se 🎮."'
+        else:
+            greeting_rule = 'CRITICAL: DO NOT repeat "AOA! Main Jack hoon PlayStation World Multan se 🎮." ya apna taaruf mat karwayein! Yeh ONGOING conversation hai. Seedha customer ke sawal ka mukhtasir aur ba-adab jawab dein.'
+
+        lang_directive = f"""
 =====================================================
 🔴 CRITICAL MANDATORY DIRECTIVE: REPLY IN ROMAN URDU
 The customer is communicating in ROMAN URDU.
 You MUST write your response in natural, polite Roman Urdu.
-Start your response with: "AOA! Main Jack hoon PlayStation World Multan se 🎮."
+{greeting_rule}
+=====================================================
+"""
+
+    ambiguity_banner = ""
+    if ambiguous_info and ambiguous_info.get("is_ambiguous"):
+        cands = ambiguous_info.get("candidates", [])
+        reason = ambiguous_info.get("reason", "")
+        cand_lines = "\n".join([f"- #{c.get('id')} {c.get('title')} (PKR {c.get('price_pkr', 0):,})" for c in cands])
+        if user_lang == "en":
+            ambiguity_banner = f"""
+=====================================================
+⚠️ AMBIGUOUS PRODUCT INQUIRY (CONFIRMATION REQUIRED):
+Reason: {reason}
+The customer asked about a product that is available across multiple platforms or editions.
+DO NOT assume the platform (PlayStation vs Xbox) or edition!
+DO NOT say an order has been created!
+Available options in our store:
+{cand_lines}
+
+YOUR TASK:
+Politely present the available options with their exact PKR prices and ask the customer to specify which platform (PlayStation or Xbox) or edition they need so we can place their order!
+=====================================================
+"""
+        else:
+            ambiguity_banner = f"""
+=====================================================
+⚠️ AMBIGUOUS PRODUCT INQUIRY (CONFIRMATION REQUIRED):
+Reason: {reason}
+Customer ne game/product ka pucha hai lekin platform (PlayStation ya Xbox) ya edition specify nahi kiya.
+Khud se platform ya edition assume mat karein! Order create mat karein!
+Hamare paas dastyab options:
+{cand_lines}
+
+YOUR TASK:
+Customer ko ba-adab dastyab options aur prices batayein aur unse poochein ke unko in mein se konsa platform (PlayStation ya Xbox) ya edition chahiye taake hum order place kar sakein!
 =====================================================
 """
 
@@ -211,14 +264,14 @@ Start your response with: "AOA! Main Jack hoon PlayStation World Multan se 🎮.
     if last_product and not (active_order and active_order.get("status") == "pending"):
         last_product_banner = f"""
 =====================================================
-RECENTLY DISCUSSED PRODUCT:
+RECENTLY DISCUSSED PRODUCT / FRANCHISE:
 - Product ID: #{last_product.get('id')}
 - Product Title: {last_product.get('title')}
 - Official Price: PKR {last_product.get('price_pkr')}
 
 CRITICAL PRODUCT CONTINUITY RULE:
-When the customer refers to "this product", "it", "yeh", "order this", "place order", or asks to buy without explicitly naming a new game, they are referring to the product discussed above: "{last_product.get('title')}".
-Always maintain this product context. Never switch or pick an unrelated game!
+When the customer refers to "this product", "it", "yeh", "order this", "standard edition for xbox", "for xbox", or asks to buy without explicitly naming a new game, they are referring to the product/franchise discussed above: "{last_product.get('title')}".
+Always maintain this product context. Never switch or pick an unrelated game like Forza!
 =====================================================
 """
 
@@ -290,6 +343,7 @@ COMMUNITY & TRUST LINKS (Share when customer asks for reviews, updates, or socia
 - ✆ Group Updates: https://tinyurl.com/uzu7trec
 - ⭐ TrustPilot Reviews: https://www.trustpilot.com/review/playstationworld.pk
 
+{ambiguity_banner}
 {last_product_banner}
 {order_banner}
 
@@ -307,26 +361,29 @@ RULES & PERSONA:
    - Remind them to confirm once paid and send the payment screenshot to WhatsApp 03054149002 for immediate code dispatch.
 4. Trust & Reviews: If customer wants proof, community updates, or reviews, share our TrustPilot (https://www.trustpilot.com/review/playstationworld.pk), WhatsApp Group (https://tinyurl.com/uzu7trec), or Facebook.
 5. Product Context Continuity: When a customer asks to order or buy 'this product', 'it', 'yeh', 'yehi', or refers to what was discussed in the immediately preceding response, ALWAYS stick strictly to that exact product. Never invent or switch to a different product.
-6. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
+6. Ambiguity & Platform Confirmation: If a game or product is available for multiple platforms (e.g. PlayStation vs Xbox) or editions, and the customer has not specified which one, ALWAYS present the choices and ask them to confirm before placing an order.
+7. Natural Chat Flow: DO NOT repeat introductory greetings ("Hello! I am Jack from PlayStation World Multan") on subsequent messages after the initial greeting turn. Speak naturally like a real human in a conversation.
+8. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
 """
     return instruction.strip()
 
 
 def get_or_create_session_data(user_id: str) -> dict:
     """Retrieve or create session dict with history and language preferences."""
+    cid = clean_user_id(user_id)
     now = time.time()
-    if user_id in SESSION_STORAGE:
-        session = SESSION_STORAGE[user_id]
+    if cid in SESSION_STORAGE:
+        session = SESSION_STORAGE[cid]
         if now - session.get("timestamp", 0) < SESSION_EXPIRY_SECONDS:
             session["timestamp"] = now
             return session
 
-    SESSION_STORAGE[user_id] = {
+    SESSION_STORAGE[cid] = {
         "timestamp": now,
         "history": [],
         "language": "en"
     }
-    return SESSION_STORAGE[user_id]
+    return SESSION_STORAGE[cid]
 
 
 def get_or_create_session(user_id: str) -> list:
@@ -336,8 +393,9 @@ def get_or_create_session(user_id: str) -> list:
 
 def clear_session(user_id: str):
     """Reset session for a customer."""
-    if user_id in SESSION_STORAGE:
-        del SESSION_STORAGE[user_id]
+    cid = clean_user_id(user_id)
+    if cid in SESSION_STORAGE:
+        del SESSION_STORAGE[cid]
 
 
 def call_gemini_api(system_prompt: str, history: list, new_user_message: str) -> str:
@@ -560,20 +618,32 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
             return reply
 
     # -------------------------------------------------------------
-    # 2. PRODUCT CONTEXT TRACKING & ORDER CREATION FLOW
+    # 2. PRODUCT CONTEXT TRACKING, AMBIGUITY CHECK & ORDER CREATION
     # -------------------------------------------------------------
     active_order = get_active_order(user_id)
 
-    # 1. Track any explicitly mentioned product in the customer's query
-    explicit_match = find_best_product_match(message_text, catalog)
-    if explicit_match:
-        set_last_discussed_product(user_id, explicit_match)
+    # Resolve product and check for platform/edition ambiguity across all catalog products
+    matched_item, is_ambiguous, candidates, ambig_reason = find_product_or_ambiguity(
+        message_text, history, catalog, user_id=user_id
+    )
 
-    # 2. Check purchase intent (e.g. "place order for this product", "buy it", "yeh chahiye")
-    if is_purchase_intent(message_text):
-        matched_item = find_best_product_match_with_history(message_text, history, catalog, user_id=user_id)
-        if matched_item:
-            set_last_discussed_product(user_id, matched_item)
+    ambiguous_info = None
+    if is_ambiguous and candidates:
+        ambiguous_info = {
+            "is_ambiguous": True,
+            "candidates": candidates,
+            "reason": ambig_reason
+        }
+        # Keep game franchise context in memory for the next turn
+        first_cand = candidates[0]
+        set_last_discussed_product(user_id, first_cand)
+
+    elif matched_item:
+        set_last_discussed_product(user_id, matched_item)
+
+        # Check purchase intent (e.g. "place order for this product", "buy it", "for xbox")
+        # ONLY create WooCommerce order when product is fully confirmed / unambiguous!
+        if is_purchase_intent(message_text):
             prod_id = matched_item.get("id")
             prod_title = matched_item.get("title")
             price = matched_item.get("price_pkr", 0)
@@ -602,8 +672,17 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
     # -------------------------------------------------------------
     # 3. AI RESPONSE GENERATION
     # -------------------------------------------------------------
+    is_new_conv = (len(history) == 0)
     last_discussed = get_last_discussed_product(user_id)
-    system_prompt = build_system_instruction(catalog, user_query=message_text, active_order=active_order, last_product=last_discussed, user_lang=user_lang)
+    system_prompt = build_system_instruction(
+        catalog,
+        user_query=message_text,
+        active_order=active_order,
+        last_product=last_discussed,
+        user_lang=user_lang,
+        is_new_conversation=is_new_conv,
+        ambiguous_info=ambiguous_info
+    )
     ai_reply = call_gemini_api(system_prompt, history, message_text)
 
     # Update conversation history

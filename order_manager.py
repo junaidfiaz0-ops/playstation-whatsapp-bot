@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,10 @@ ACTIVE_ORDERS: Dict[str, dict] = {}
 
 def clean_user_id(user_id: str) -> str:
     """Normalize phone number / user session id."""
-    return re.sub(r'[^a-zA-Z0-9]', '', str(user_id).strip())
+    raw = re.sub(r'[^a-zA-Z0-9]', '', str(user_id).strip())
+    if raw.startswith('923') and len(raw) == 12:
+        return '0' + raw[2:]
+    return raw
 
 
 def load_orders():
@@ -51,8 +54,6 @@ def set_active_order(user_id: str, order_id: str, product_id: Optional[int], tit
     """Store or update active order for customer."""
     import time
     cid = clean_user_id(user_id)
-    existing = ACTIVE_ORDERS.get(cid, {})
-    last_prod = existing.get("last_discussed_product")
     ACTIVE_ORDERS[cid] = {
         "order_id": str(order_id),
         "product_id": product_id,
@@ -60,7 +61,7 @@ def set_active_order(user_id: str, order_id: str, product_id: Optional[int], tit
         "total": str(total),
         "status": status,
         "updated_at": time.time(),
-        "last_discussed_product": last_prod or {
+        "last_discussed_product": {
             "id": product_id,
             "title": title,
             "price_pkr": total
@@ -171,22 +172,41 @@ def is_purchase_intent(text: str) -> bool:
     return False
 
 
+MODIFIER_WORDS = {
+    # Editions
+    'standard', 'deluxe', 'ultimate', 'definitive', 'gold', 'premium', 'special',
+    'classic', 'classics', 'remastered', 'anniversary', 'bundle', 'collection',
+    'crossgen', 'cross', 'gen', 'edition', 'editions', 'essential', 'extra',
+    # Platforms
+    'xbox', 'ps', 'ps4', 'ps5', 'playstation', 'pc', 'steam', 'switch', 'nintendo',
+    'series', 'one', 'x', 's', 'version', 'console',
+    # Delivery / Accounts
+    'key', 'code', 'cdkey', 'cdk', 'account', 'acc', 'new', 'old', 'renew', 'digital', 'disc',
+    # Units / Durations
+    'month', 'months', 'year', 'years', 'day', 'days', '1m', '2m', '3m', '5m', '12m'
+}
+
 GENERIC_STOP_WORDS = {
-    'please', 'give', 'me', 'price', 'rate', 'cost', 'how', 'much', 'is', 'for', 
+    'please', 'plz', 'pls', 'plzz', 'give', 'me', 'price', 'rate', 'cost', 'how', 'much', 'is', 'for', 
     'the', 'a', 'an', 'and', 'or', 'with', 'in', 'to', 'at', 'from', 'of', 'on', 
     'this', 'that', 'these', 'those', 'it', 'its', 'item', 'product', 'products', 
     'one', 'ones', 'place', 'order', 'buy', 'purchase', 'checkout', 'get', 'need', 
     'want', 'send', 'details', 'qr', 'code', 'payment', 'yes', 'no', 'ok', 'okay',
     'can', 'you', 'i', 'we', 'my', 'your', 'sir', 'bro', 'bhai', 'game', 'games',
-    'account', 'key', 'card', 'digital', 'batao', 'bata', 'bhai', 'hai', 'hain', 'ha',
-    'mujhe', 'mujy', 'mjhe', 'chahiye', 'chaheay', 'lena', 'leni', 'lene',
-    'khareedna', 'kharidna', 'kharidni', 'mangwana', 'mangwani',
+    'batao', 'bata', 'hai', 'hain', 'ha', 'mujhe', 'mujy', 'mjhe', 'chahiye', 'chaheay',
+    'lena', 'leni', 'lene', 'khareedna', 'kharidna', 'kharidni', 'mangwana', 'mangwani',
     'karna', 'karni', 'karne', 'karo', 'kardo', 'kardein', 'karein',
     'yeh', 'ye', 'yehi', 'woh', 'wo', 'wohi', 'is', 'isko', 'iskay', 'iski',
     'us', 'usko', 'uskay', 'uski', 'wahi', 'same', 'wala', 'wali', 'wale',
     'ka', 'ki', 'ke', 'ko', 'se', 'par', 'pe', 'hoga', 'hogi', 'bhejo', 'bhej', 'dein', 'do',
     'kia', 'kya', 'kitne', 'kitna', 'kitni'
 }
+
+ROMAN_NUMERALS = {
+    '1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v',
+    '6': 'vi', '7': 'vii', '8': 'viii', '9': 'ix', '10': 'x'
+}
+REV_ROMAN = {v: k for k, v in ROMAN_NUMERALS.items()}
 
 
 def clean_token(w: str) -> str:
@@ -201,92 +221,194 @@ def clean_token(w: str) -> str:
     return w
 
 
-def find_best_product_match(query: str, catalog: dict) -> Optional[dict]:
-    """Find the single most relevant catalog item matching the user's inquiry."""
-    raw_words = re.findall(r'[a-zA-Z0-9]+', query.lower())
-    words = [clean_token(w) for w in raw_words if clean_token(w) not in GENERIC_STOP_WORDS]
-    if not words:
-        return None
+def normalize_token(w: str) -> str:
+    w = clean_token(w)
+    if w in REV_ROMAN:
+        return REV_ROMAN[w]
+    return w
 
+
+def detect_platform_intent(text: str) -> dict:
+    t = text.lower()
+    ps = bool(re.search(r'\b(ps|ps4|ps5|playstation|play\s*station|psn|sony)\b', t))
+    xb = bool(re.search(r'\b(xbox|series\s*[xs]|one\s*[xs]|xbox\s*one|xb)\b', t))
+    pc = bool(re.search(r'\b(pc|steam|windows)\b', t))
+    return {'ps': ps, 'xbox': xb, 'pc': pc}
+
+
+def detect_item_platform(item: dict) -> dict:
+    t = (item.get('title', '') + ' ' + ' '.join(item.get('categories', []))).lower()
+    ps = bool(re.search(r'\b(ps4|ps5|playstation|psn)\b', t))
+    xb = bool(re.search(r'\b(xbox|series\s*[xs]|one\s*[xs]|one/series)\b', t))
+    pc = bool(re.search(r'\b(pc|steam|windows)\b', t))
+    return {'ps': ps, 'xbox': xb, 'pc': pc}
+
+
+def detect_item_edition(item: dict) -> str:
+    t = item.get('title', '').lower()
+    for ed in ['definitive', 'ultimate', 'deluxe', 'standard', 'gold', 'premium', 'essential', 'extra']:
+        if ed in t:
+            return ed.title() + " Edition"
+    return "Standard Edition"
+
+
+def extract_franchise_from_title(title: str) -> str:
+    """Extract root franchise/game name from a title by stripping modifiers and platform names."""
+    clean = re.sub(r'\s*\(.*?\)', '', title)
+    clean = re.sub(r'\b(Standard|Deluxe|Ultimate|Definitive|Gold|Premium|Essential|Extra|Classics?)\s*(Edition)?\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(Xbox\s*One(\s*Series\s*[XS])?|PS4|PS5|PlayStation|PC|Key|Cross-Gen\s*Bundle)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[\/|\\:–-]+', ' ', clean).strip()
+    return re.sub(r'\s+', ' ', clean)
+
+
+def score_product_match(words: list, item: dict, content_words: list = None) -> int:
+    title = item.get('title', '').lower()
+    title_raw_tokens = [clean_token(w) for w in re.findall(r'[a-zA-Z0-9]+', title)]
+    title_tokens = [normalize_token(w) for w in title_raw_tokens]
+    title_norm = ' ' + ' '.join(title_tokens) + ' '
+    raw_norm = ' ' + ' '.join(title_raw_tokens) + ' '
+    cats = ' '.join(item.get('categories', [])).lower()
+
+    # Content-word safeguard: if user mentioned specific game name(s), at least one must match!
+    if content_words:
+        matched_content = False
+        for c in content_words:
+            nc = normalize_token(c)
+            if re.search(r'\b' + re.escape(nc) + r'\b', title_norm) or re.search(r'\b' + re.escape(c) + r'\b', raw_norm) or re.search(r'\b' + re.escape(c) + r'\b', cats):
+                matched_content = True
+                break
+        if not matched_content:
+            return 0
+
+    score = 0
+    norm_words = [normalize_token(w) for w in words]
+    for i in range(len(norm_words) - 1):
+        if f" {norm_words[i]} {norm_words[i+1]} " in title_norm or f" {words[i]} {words[i+1]} " in raw_norm:
+            score += 35
+
+    for w, nw in zip(words, norm_words):
+        pat1 = r'\b' + re.escape(nw) + r'\b'
+        pat2 = r'\b' + re.escape(w) + r'\b'
+        if re.search(pat1, title_norm) or re.search(pat2, raw_norm):
+            score += 20 if nw.isdigit() else 10
+        elif re.search(pat2, cats):
+            score += 4
+
+    return score
+
+
+def find_product_or_ambiguity(
+    query: str,
+    history: list,
+    catalog: dict,
+    user_id: str = ""
+) -> Tuple[Optional[dict], bool, List[dict], str]:
+    """
+    Generalized resolver for ANY product, platform, or edition inquiry:
+    1. Checks if the inquiry has multiple platform variants (PlayStation vs Xbox) and asks if unspecified.
+    2. Checks if the inquiry has multiple edition variants (Standard vs Deluxe vs Ultimate) and asks if unspecified.
+    3. Seamlessly carries over game franchise context from last_discussed_product across turns.
+    Returns: (matched_product, is_ambiguous, candidate_options, reason)
+    """
     all_items = (
         catalog.get('subscriptions', []) +
         catalog.get('games', []) +
         catalog.get('hardware_and_accessories', [])
     )
 
+    tokens = [clean_token(w) for w in re.findall(r'[a-zA-Z0-9]+', query.lower())]
+    stop_words_effective = set(GENERIC_STOP_WORDS)
+    if 'pass' in tokens:
+        stop_words_effective.discard('game')
+    
+    non_stop = [w for w in tokens if w not in stop_words_effective]
+    content = [w for w in non_stop if w not in MODIFIER_WORDS and not w.isdigit()]
+
+    user_plat = detect_platform_intent(query)
+    has_user_plat = user_plat['ps'] or user_plat['xbox'] or user_plat['pc']
+
+    edition_keywords = ['standard', 'deluxe', 'ultimate', 'definitive', 'gold', 'premium', 'essential', 'extra']
+    user_has_edition = any(ed in query.lower() for ed in edition_keywords)
+
+    last_prod = get_last_discussed_product(user_id) if user_id else None
+
+    # Context carry-over: if user didn't mention game name, inherit franchise from last_product
+    search_words = list(non_stop)
+    effective_content = list(content)
+    if len(content) == 0 and last_prod:
+        franchise = extract_franchise_from_title(last_prod.get('title', ''))
+        f_words = [clean_token(w) for w in re.findall(r'[a-zA-Z0-9]+', franchise.lower())]
+        search_words = f_words + search_words
+        effective_content = f_words
+        # Also inherit edition if user didn't specify one
+        if not user_has_edition:
+            last_title = last_prod.get('title', '').lower()
+            for ed in edition_keywords:
+                if ed in last_title:
+                    search_words.append(ed)
+                    user_has_edition = True
+                    break
+
     scored = []
-    for item in all_items:
-        title = item.get('title', '').lower()
-        title_tokens = [clean_token(w) for w in re.findall(r'[a-zA-Z0-9]+', title)]
-        title_norm = ' ' + ' '.join(title_tokens) + ' '
-        cats = ' '.join(item.get('categories', [])).lower()
-        score = 0
+    for it in all_items:
+        s = score_product_match(search_words, it, content_words=effective_content if effective_content else None)
+        if s >= 10:
+            scored.append((s, it))
+    scored.sort(key=lambda x: x[0], reverse=True)
 
-        # Exact adjacent pairs match (e.g. '2 month', 'game pass')
-        for i in range(len(words) - 1):
-            two_words = f" {words[i]} {words[i+1]} "
-            if two_words in title_norm:
-                score += 30
+    if not scored:
+        return None, False, [], "no_match"
 
-        for w in words:
-            pattern = r'\b' + re.escape(w) + r'\b'
-            if re.search(pattern, title_norm):
-                if w.isdigit():
-                    score += 20
-                else:
-                    score += 8
-            elif re.search(pattern, cats):
-                score += 2
+    top_score = scored[0][0]
+    top_candidates = [it for s, it in scored if s >= top_score - 18]
 
-        if score >= 10:
-            scored.append((score, item))
+    # 1. Platform Ambiguity Check
+    if not has_user_plat:
+        has_ps = any(detect_item_platform(it)['ps'] for it in top_candidates)
+        has_xb = any(detect_item_platform(it)['xbox'] for it in top_candidates)
+        if has_ps and has_xb:
+            return None, True, top_candidates[:6], "platform_ambiguous"
 
-    if scored:
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return scored[0][1]
+    # 2. Filter candidates by platform if specified
+    if has_user_plat:
+        filtered = []
+        for it in top_candidates:
+            it_plat = detect_item_platform(it)
+            if (user_plat['ps'] and it_plat['ps']) or (user_plat['xbox'] and it_plat['xbox']) or (user_plat['pc'] and it_plat['pc']):
+                filtered.append(it)
+        if filtered:
+            top_candidates = filtered
 
+    # 3. Edition Ambiguity Check
+    if not user_has_edition and len(top_candidates) > 1:
+        editions = set(detect_item_edition(it) for it in top_candidates)
+        if len(editions) > 1:
+            return None, True, top_candidates[:6], "edition_ambiguous"
+
+    # Resolved to a specific product
+    if top_candidates:
+        return top_candidates[0], False, [], "resolved"
+
+    return scored[0][1], False, [], "resolved"
+
+
+def find_best_product_match(query: str, catalog: dict) -> Optional[dict]:
+    """Find the single most relevant catalog item matching the user's inquiry."""
+    prod, is_ambig, candidates, _ = find_product_or_ambiguity(query, [], catalog)
+    if prod:
+        return prod
+    if candidates:
+        return candidates[0]
     return None
 
 
 def find_best_product_match_with_history(current_query: str, history: list, catalog: dict, user_id: str = "") -> Optional[dict]:
-    """
-    Search for the product in the current message first.
-    If the current message is vague or referential ('this product', 'buy it', 'yeh order kardo'):
-    1. Check last_discussed_product in user state.
-    2. Check recent history in reverse for user inquiries or assistant quoted titles.
-    """
-    # 1. Check if current message explicitly mentions a specific product
-    match = find_best_product_match(current_query, catalog)
-    if match:
-        return match
-
-    # 2. Check persistent state for last discussed product
-    if user_id:
-        last_prod = get_last_discussed_product(user_id)
-        if last_prod:
-            all_items = (
-                catalog.get('subscriptions', []) +
-                catalog.get('games', []) +
-                catalog.get('hardware_and_accessories', [])
-            )
-            for item in all_items:
-                if item.get("id") == last_prod.get("id"):
-                    return item
-            return last_prod
-
-    # 3. Check recent history in reverse
-    for turn in reversed(history[-6:]):
-        text = turn.get("text", "")
-        # If assistant message has *Title* format
-        quoted_titles = re.findall(r'\*([^*]+)\*', text)
-        for q_title in quoted_titles:
-            match = find_best_product_match(q_title, catalog)
-            if match:
-                return match
-
-        match = find_best_product_match(text, catalog)
-        if match:
-            return match
-
+    """Find product with full context carry-over from user session history."""
+    prod, is_ambig, candidates, _ = find_product_or_ambiguity(current_query, history, catalog, user_id=user_id)
+    if prod:
+        return prod
+    if candidates:
+        return candidates[0]
     return None
+
 
