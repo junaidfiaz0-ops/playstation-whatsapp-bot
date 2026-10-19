@@ -678,6 +678,22 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                     status="pending"
                 )
                 active_order = get_active_order(user_id)
+            else:
+                if user_lang == "en":
+                    reply = (
+                        f"⚠️ I attempted to place your order for **{prod_title}** on our website (*playstationworld.pk*), "
+                        f"but our store API is currently connecting or updating. Please message us directly on WhatsApp at **03054149002** "
+                        f"so we can confirm and process your order right away!"
+                    )
+                else:
+                    reply = (
+                        f"⚠️ Humne aapka order **{prod_title}** website (*playstationworld.pk*) par place karne ki koshish ki "
+                        f"lekin website API connection me masla aya hai. Baraye meherbani foran hamare WhatsApp **03054149002** "
+                        f"par rabta karein taake hum aapka order foran process kar sakein!"
+                    )
+                history.append({"role": "user", "text": message_text})
+                history.append({"role": "model", "text": reply})
+                return reply
 
     # C. Product resolution & ambiguity check across all catalog items
     matched_item, is_ambiguous, candidates, ambig_reason = find_product_or_ambiguity(
@@ -724,6 +740,22 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                         status="pending"
                     )
                     active_order = get_active_order(user_id)
+                else:
+                    if user_lang == "en":
+                        reply = (
+                            f"⚠️ I attempted to place your order for **{prod_title}** on our website (*playstationworld.pk*), "
+                            f"but our store API is currently connecting or updating. Please message us directly on WhatsApp at **03054149002** "
+                            f"so we can confirm and process your order right away!"
+                        )
+                    else:
+                        reply = (
+                            f"⚠️ Humne aapka order **{prod_title}** website (*playstationworld.pk*) par place karne ki koshish ki "
+                            f"lekin website API connection me masla aya hai. Baraye meherbani foran hamare WhatsApp **03054149002** "
+                            f"par rabta karein taake hum aapka order foran process kar sakein!"
+                        )
+                    history.append({"role": "user", "text": message_text})
+                    history.append({"role": "model", "text": reply})
+                    return reply
 
     # -------------------------------------------------------------
     # 3. AI RESPONSE GENERATION
