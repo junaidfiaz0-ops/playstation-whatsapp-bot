@@ -50,19 +50,21 @@ def get_active_order(user_id: str) -> Optional[dict]:
     return ACTIVE_ORDERS.get(cid)
 
 
-def set_active_order(user_id: str, order_id: str, product_id: Optional[int], title: str, total: str, status: str = "pending"):
+def set_active_order(user_id: str, order_id: str, product_id: Optional[int], title: str, total: str, status: str = "pending", sku: str = ""):
     """Store or update active order for customer."""
     import time
     cid = clean_user_id(user_id)
     ACTIVE_ORDERS[cid] = {
         "order_id": str(order_id),
         "product_id": product_id,
+        "sku": str(sku or ""),
         "title": title,
         "total": str(total),
         "status": status,
         "updated_at": time.time(),
         "last_discussed_product": {
             "id": product_id,
+            "sku": str(sku or ""),
             "title": title,
             "price_pkr": total
         }
@@ -77,6 +79,7 @@ def set_last_discussed_product(user_id: str, product: dict):
         ACTIVE_ORDERS[cid] = {}
     ACTIVE_ORDERS[cid]["last_discussed_product"] = {
         "id": product.get("id"),
+        "sku": str(product.get("sku") or ""),
         "title": product.get("title"),
         "price_pkr": product.get("price_pkr", 0)
     }
@@ -98,7 +101,7 @@ def set_presented_options(user_id: str, options: List[dict]):
     if cid not in ACTIVE_ORDERS:
         ACTIVE_ORDERS[cid] = {}
     ACTIVE_ORDERS[cid]["presented_options"] = [
-        {"id": opt.get("id"), "title": opt.get("title"), "price_pkr": opt.get("price_pkr", 0)}
+        {"id": opt.get("id"), "sku": str(opt.get("sku") or ""), "title": opt.get("title"), "price_pkr": opt.get("price_pkr", 0)}
         for opt in options
     ]
     save_orders()
@@ -126,6 +129,14 @@ def parse_option_selection(text: str, options: list) -> Optional[dict]:
     if not options:
         return None
     t = text.lower().strip()
+
+    # Match by SKU
+    for opt in options:
+        opt_sku = str(opt.get('sku', '')).strip().lower()
+        if opt_sku and opt_sku in t:
+            return opt
+
+    # Match by exact number / ordinal
     m = re.search(r'\b(?:option|opt|number|no\.?)\s*([1-9])\b', t)
     if m:
         idx = int(m.group(1)) - 1
@@ -141,24 +152,80 @@ def parse_option_selection(text: str, options: list) -> Optional[dict]:
         return options[1]
     if ('third' in t or 'teesra' in t or 'tesra' in t) and len(options) >= 3:
         return options[2]
+
+    # Substring / title token match
+    t_tokens = set(re.findall(r'[a-zA-Z0-9]+', t))
+    for opt in options:
+        opt_tokens = set(re.findall(r'[a-zA-Z0-9]+', opt.get('title', '').lower()))
+        # Check platform match (e.g. ps5 vs xbox)
+        user_is_ps = bool(re.search(r'\b(ps|ps4|ps5|playstation)\b', t))
+        user_is_xb = bool(re.search(r'\b(xbox|series\s*[xs])\b', t))
+        opt_is_ps = bool(re.search(r'\b(ps|ps4|ps5|playstation)\b', opt.get('title', '').lower()))
+        opt_is_xb = bool(re.search(r'\b(xbox|series\s*[xs])\b', opt.get('title', '').lower()))
+        
+        user_is_std = 'standard' in t
+        user_is_ult = 'ultimate' in t or 'deluxe' in t
+        opt_is_std = 'standard' in opt.get('title', '').lower()
+        opt_is_ult = 'ultimate' in opt.get('title', '').lower() or 'deluxe' in opt.get('title', '').lower()
+
+        if user_is_ps and opt_is_ps:
+            if (user_is_std and opt_is_std) or (user_is_ult and opt_is_ult):
+                return opt
+        elif user_is_xb and opt_is_xb:
+            if (user_is_std and opt_is_std) or (user_is_ult and opt_is_ult):
+                return opt
+
     return None
 
 
 def is_order_placement_request(text: str) -> bool:
     """Check if customer is confirming or asking the bot to place the order on website."""
     t = text.lower().strip()
+    # Normalize common typos
+    t = re.sub(r'^(?:firdt|first)\s+', '', t)
     patterns = [
-        r"\b(place\s*(the\s*)?order|place\s*it|order\s*it|order\s*this|buy\s*this|order\s*kardo|order\s*kar\s*do|order\s*krdo|order\s*kardein)\b",
-        r"\b(place\s*order\s*for\s*me|order\s*for\s*me|on\s*website|website\s*pe|website\s*par|website\s*par\s*order)\b",
-        r"\b(like\s*to\s*place\s*order|want\s*to\s*place\s*order|ready\s*to\s*order)\b",
+        r"\b(place\s*(the\s*)?order|place\s*it|order\s*it|order\s*this|buy\s*this|order\s*kardo|order\s*kar\s*do|order\s*krdo|order\s*kardein|order\s*lagao|order\s*laga\s*do)\b",
+        r"\b(place\s*order\s*for\s*(me|this\s*game|this)|order\s*for\s*me|on\s*website|website\s*pe|website\s*par|website\s*par\s*order)\b",
+        r"\b(like\s*to\s*place\s*order|want\s*to\s*place\s*order|ready\s*to\s*order|order\s*now)\b",
         r"\b(haan\s*(order|place|kardo|kar\s*do)|yes\s*(place|order|please|do\s*it))\b",
-        r"^(yes|yes\s*please|yeah|yep|haan|ji|ji\s*haan|kardo|kar\s*do|krdo|kr\s*do|bilkul|confirm|done)$"
+        r"^(yes|yes\s*please|yeah|yep|haan|ji|ji\s*haan|kardo|kar\s*do|krdo|kr\s*do|bilkul|confirm|done|order|order\s*now|proceed)$"
     ]
     for p in patterns:
         if re.search(p, t):
             return True
     return False
 
+
+def is_chat_exit(text: str) -> bool:
+    """Check if customer is saying goodbye or leaving the conversation."""
+    t = text.lower().strip()
+    exit_patterns = [
+        r"\b(bye|goodbye|good\s*bye|allah\s*hafiz|khuda\s*hafiz|alvida|cya|see\s*you|leave\s*chat|stop|exit)\b",
+        r"^(ok\s*thanks|ok\s*thank\s*you|thanks|thank\s*you|shukriya|thx|no\s*thanks|nahi\s*chahiye|khatam|bas)$"
+    ]
+    for ep in exit_patterns:
+        if re.search(ep, t):
+            return True
+    return False
+
+
+def is_order_status_or_id_inquiry(text: str) -> bool:
+    """Check if customer is inquiring about their order number / status."""
+    t = text.lower().strip().rstrip('?')
+    if re.search(r'\b(what\s*(is|was)?\s*(the\s*|my\s*)?order\s*(no|number|#)?)\b', t):
+        if 'order' in t:
+            return True
+    if re.search(r'\b(order\s*(no|number|#))\b', t) or re.search(r'\border\s*#', t):
+        return True
+    if t in ['order no', 'order number', 'order #', 'my order', 'my order #']:
+        return True
+    return False
+
+
+def is_qr_request(text: str) -> bool:
+    """Check if customer specifically asks for QR code payment."""
+    t = text.lower().strip()
+    return bool(re.search(r'\b(qr|qr\s*code|barcode|scanner|scan)\b', t))
 
 
 def clear_active_order(user_id: str):
@@ -178,7 +245,6 @@ def is_payment_confirmation(text: str) -> bool:
     t = text.lower().strip()
     
     # 1. Negative guard: If user is asking how to pay, expressing desire to pay, or asking for QR / account details
-    # e.g. "i want to pay using qr code", "send qr code", "share qr codes", "can i pay with jazzcash", "qr code bhejo"
     intent_to_pay_patterns = [
         r"\b(want\s*to|wants\s*to|how\s*to|can\s*i|going\s*to)\s*(pay|transfer|send)\b",
         r"\b(send|share|give|need|bhejo|bhej\s*do|bhej\s*dein|dikhao|dikha\s*dein)\s*(me\s*)?(the\s*)?(qr|qr\s*code|barcode|account|details)\b",
@@ -199,20 +265,20 @@ def is_payment_confirmation(text: str) -> bool:
         r"\bpaid\s*(via|through|using|to|with)\s*(qr|bank|raast|jazzcash|easypaisa|sadapay|nayapay|account)\b",
         
         # Method-specific completed transfer in Roman Urdu
-        r"\b(qr|bank|raast|jazzcash|jazz\s*cash|easypaisa|easy\s*paisa|sadapay|nayapay|account)\s*(se|par|pe|me|mein)?\s*(kar|kr|bhej|send|transfer|pay)\s*(di|diya|diye|dya|dia|hai|hain)\b",
+        r"\b(qr|bank|raast|jazzcash|jazz\s*cash|easypaisa|easy\s*paisa|sadapay|nayapay|account)\s*(se|par|pe|me|mein)?\s*(kar|kr|ker|bhej|send|transfer|pay)\s*(di|diya|diye|dya|dia|hai|hain)\b",
         
         # General Roman Urdu / Hindi completions
-        r"\b(pay|payment)\s*(kar|kr)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
-        r"\b(transfer|trf)\s*(kar|kr)\s*(di|diya|diye|dya|dia|done|di\s*hai|diya\s*hai|diye\s*hain)\b",
-        r"\b(paise|pesay|pese|amount)\s*(bhej|send|transfer|kar|kr)\s*(di|diya|diye|dya|dia|diye\s*hain)\b",
+        r"\b(pay|payment)\s*(kar|kr|ker)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(transfer|trf)\s*(kar|kr|ker)\s*(di|diya|diye|dya|dia|done|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(paise|pesay|pese|amount)\s*(bhej|send|transfer|kar|kr|ker)\s*(di|diya|diye|dya|dia|diye\s*hain)\b",
         r"\b(bhej|bheej|send)\s*(di|diya|diye|dya|dia|dien|di\s*hai|diya\s*hai|diye\s*hain)\b",
-        r"\b(kar|kr)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
+        r"\b(kar|kr|ker)\s*(di|diya|diye|dya|dia|di\s*hai|diya\s*hai|diye\s*hain)\b",
         r"\b(ho\s*gaya|ho\s*gya|ho\s*gayi|ho\s*gyi|ho\s*gaya\s*hai|ho\s*gya\s*hai)\b",
-        r"\b(bayan|ada)\s*(kar|kr)\s*(di|diya|diye|dya)\b",
+        r"\b(bayan|ada)\s*(kar|kr|ker)\s*(di|diya|diye|dya)\b",
         r"\b(yes\s*paid|ha\s*paid|haan\s*paid|ji\s*paid)\b",
         
         # Direct standalone confirmation words
-        r"^(paid|done|yes\s*paid|done\s*payment|payment\s*done|ho\s*gaya|kar\s*diya|bhej\s*diya|kar\s*di|bhej\s*di|sent)$"
+        r"^(paid|done|yes\s*paid|done\s*payment|payment\s*done|ho\s*gaya|kar\s*diya|ker\s*diya|kardia|bhej\s*diya|kar\s*di|ker\s*di|bhej\s*di|sent|pay\s*done)$"
     ]
     for pattern in patterns:
         if re.search(pattern, t):
@@ -438,7 +504,24 @@ def find_product_or_ambiguity(
         has_ps = any(detect_item_platform(it)['ps'] for it in top_candidates)
         has_xb = any(detect_item_platform(it)['xbox'] for it in top_candidates)
         if has_ps and has_xb:
-            return None, True, top_candidates[:6], "platform_ambiguous"
+            expanded_cands = []
+            for it in top_candidates[:6]:
+                # If product has options with brands and packages (like GTA VI)
+                opts = it.get('options', [])
+                has_brand = any('brand:' in str(o).lower() for o in opts)
+                has_pkg = any('package:' in str(o).lower() for o in opts)
+                if has_brand and has_pkg:
+                    p_min = it.get('price_min_pkr', it.get('price_pkr', 0))
+                    p_max = it.get('price_max_pkr', p_min)
+                    expanded_cands.extend([
+                        {"id": it.get('id'), "sku": f"{it.get('sku', '3040')}-PS5-STD", "title": "GTA VI Standard Edition for PlayStation 5", "price_pkr": p_min},
+                        {"id": it.get('id'), "sku": f"{it.get('sku', '3040')}-PS5-ULT", "title": "GTA VI Ultimate Edition for PlayStation 5", "price_pkr": p_max},
+                        {"id": it.get('id'), "sku": f"{it.get('sku', '3040')}-XB-STD", "title": "GTA VI Standard Edition for Xbox Series X|S", "price_pkr": p_min},
+                        {"id": it.get('id'), "sku": f"{it.get('sku', '3040')}-XB-ULT", "title": "GTA VI Ultimate Edition for Xbox Series X|S", "price_pkr": p_max}
+                    ])
+                else:
+                    expanded_cands.append(it)
+            return None, True, expanded_cands, "platform_ambiguous"
 
     # 2. Filter candidates by platform if specified
     if has_user_plat:
@@ -458,9 +541,27 @@ def find_product_or_ambiguity(
 
     # Resolved to a specific product
     if top_candidates:
-        return top_candidates[0], False, [], "resolved"
+        matched = dict(top_candidates[0])
+        # If user specified standard or ultimate on variable item
+        opts = matched.get('options', [])
+        has_pkg = any('package:' in str(o).lower() for o in opts)
+        if has_pkg:
+            user_text = query.lower()
+            p_min = matched.get('price_min_pkr', matched.get('price_pkr', 0))
+            p_max = matched.get('price_max_pkr', p_min)
+            plat_label = "PlayStation 5" if user_plat['ps'] else ("Xbox Series X|S" if user_plat['xbox'] else "")
+            if 'standard' in user_text:
+                matched['title'] = f"GTA VI Standard Edition for {plat_label}".strip()
+                matched['price_pkr'] = p_min
+                matched['sku'] = f"{matched.get('sku', '3040')}-STD"
+            elif 'ultimate' in user_text or 'deluxe' in user_text:
+                matched['title'] = f"GTA VI Ultimate Edition for {plat_label}".strip()
+                matched['price_pkr'] = p_max
+                matched['sku'] = f"{matched.get('sku', '3040')}-ULT"
+        return matched, False, [], "resolved"
 
-    return scored[0][1], False, [], "resolved"
+    matched = dict(scored[0][1])
+    return matched, False, [], "resolved"
 
 
 def find_best_product_match(query: str, catalog: dict) -> Optional[dict]:

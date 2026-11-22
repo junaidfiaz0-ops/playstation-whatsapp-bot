@@ -12,6 +12,8 @@ from order_manager import (
     is_payment_confirmation,
     is_purchase_intent,
     is_order_placement_request,
+    is_chat_exit,
+    is_order_status_or_id_inquiry,
     set_presented_options,
     get_presented_options,
     clear_presented_options,
@@ -193,9 +195,10 @@ def build_system_instruction(
             price_str = f"PKR {p_base:,}"
 
         options = f" | Options: {'; '.join(item.get('options', []))}" if item.get('options') else ""
+        sku_str = f" [SKU: {item.get('sku')}]" if item.get('sku') else ""
         stock = " (In Stock)" if item.get("in_stock", True) else " (Out of Stock)"
         link = f" (Buy on {item.get('permalink')})" if item.get('permalink') else ""
-        items_formatted.append(f"- {title} -> {price_str}{stock}{options}{link}")
+        items_formatted.append(f"- {title}{sku_str} -> {price_str}{stock}{options}{link}")
 
     catalog_context = "\n".join(items_formatted)
 
@@ -368,8 +371,11 @@ RULES & PERSONA:
 5. Product Context Continuity: When a customer asks to order or buy 'this product', 'it', 'yeh', 'yehi', or refers to what was discussed in the immediately preceding response, ALWAYS stick strictly to that exact product. Never invent or switch to a different product.
 6. Ambiguity & Platform Confirmation: If a game or product is available for multiple platforms (e.g. PlayStation vs Xbox) or editions, and the customer has not specified which one, ALWAYS present the choices and ask them to confirm before placing an order.
 7. Order Placement on Website: When a customer selects an option, ask: "Would you like me to place this order on our website for you?" When they say "Yes" or ask you to place it, NEVER tell them to visit the site or add to cart themselves! The order is automatically created by the system on playstationworld.pk, and you share their Order # and payment methods right here.
-8. Natural Chat Flow: DO NOT repeat introductory greetings ("Hello! I am Jack from PlayStation World Multan") on subsequent messages after the initial greeting turn. Speak naturally like a real human in a conversation.
-9. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
+8. Natural Chat Flow & Exit Respect:
+   - DO NOT repeat introductory greetings ("Hello! I am Jack from PlayStation World Multan") on subsequent messages after the initial greeting turn. Speak naturally like a real human in a conversation.
+   - When a customer says goodbye, thanks, leaves the chat, or indicates they do not need anything more, politely wish them well (e.g. "You're welcome! Feel free to reach out anytime. Have a great day!") and DO NOT continue prompting, pitching products, or bombarding them with further messages.
+9. SKU & Product Accuracy: Always remember and track the exact product SKU. When placing or discussing an order, maintain the exact SKU to prevent any confusion between editions, platforms, or game versions.
+10. Keep replies well-spaced, courteous, and easy to read on mobile WhatsApp.
 """
     return instruction.strip()
 
@@ -500,6 +506,64 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
     history = session_data["history"]
 
     # -------------------------------------------------------------
+    # 0. EXIT / GOODBYE FLOW (Do not keep messaging repeatedly)
+    # -------------------------------------------------------------
+    if is_chat_exit(message_text):
+        if user_lang == "en":
+            reply = (
+                "You're very welcome! Feel free to reach out whenever you need any game or subscription code. "
+                "Have a fantastic day! 🎮✨"
+            )
+        else:
+            reply = (
+                "Bohat shukriya! Jab bhi kisi game ya subscription code ki zaroorat ho, humse rabta kar sakte hain. "
+                "Apna bohat khayal rakhein! Allah Hafiz! 🎮✨"
+            )
+        history.append({"role": "user", "text": message_text})
+        history.append({"role": "model", "text": reply})
+        return reply
+
+    # -------------------------------------------------------------
+    # 0.1 ORDER NUMBER & STATUS INQUIRY ("what is order no", etc.)
+    # -------------------------------------------------------------
+    active_order = get_active_order(user_id)
+    if is_order_status_or_id_inquiry(message_text):
+        if active_order and active_order.get("order_id"):
+            order_id = active_order.get("order_id")
+            title = active_order.get("title", "Game / Subscription")
+            total = active_order.get("total", "0")
+            sku = active_order.get("sku", "")
+            sku_info = f" (SKU: {sku})" if sku else ""
+
+            if user_lang == "en":
+                reply = (
+                    f"Your order has been successfully created with **Order Number #{order_id}** for **{title}**{sku_info}, with a total amount of **PKR {total}**.\n\n"
+                    f"To complete your order, please transfer the total amount using any of our official payment methods below:\n\n"
+                    f"• 🏦 **Bank Transfer:** Bank Alfalah | A/C: 09131009641388 | IBAN: PK30ALFH0913001009641388 | Title: PLAYSTATION WORLD MULTAN\n"
+                    f"• ⚡ **Raast ID:** 03054149002 (Title: Junaid Fiaz)\n"
+                    f"• 🟢 **Easypaisa:** 03467146530 (Title: Junaid Fiaz)\n"
+                    f"• 🟠 **JazzCash / SadaPay / NayaPay:** 03054149002 (Title: Junaid Fiaz)\n\n"
+                    f"⚠️ **Policy Note:** Direct transfers from Easypaisa/JazzCash to Bank A/C are not accepted.\n\n"
+                    f"If you prefer scanning a QR code to pay, let us know and we will send the JazzCash or EasyPaisa QR code immediately!\n\n"
+                    f"Whether you pay via QR code or direct transfer to our bank/wallet, please reply 'paid' or 'done' once completed and send your payment screenshot to WhatsApp **03054149002** so our team can verify and dispatch your order within 5-15 minutes!"
+                )
+            else:
+                reply = (
+                    f"Aapka order **Order Number #{order_id}** ke sath create ho chuka hai for **{title}**{sku_info} (Total: **PKR {total}**).\n\n"
+                    f"Order mukammal karne ke liye darj zail payment methods me se kisi par bhi payment transfer karein:\n\n"
+                    f"• 🏦 **Bank Transfer:** Bank Alfalah | A/C: 09131009641388 | IBAN: PK30ALFH0913001009641388 | Title: PLAYSTATION WORLD MULTAN\n"
+                    f"• ⚡ **Raast ID:** 03054149002 (Title: Junaid Fiaz)\n"
+                    f"• 🟢 **Easypaisa:** 03467146530 (Title: Junaid Fiaz)\n"
+                    f"• 🟠 **JazzCash / SadaPay / NayaPay:** 03054149002 (Title: Junaid Fiaz)\n\n"
+                    f"⚠️ **Policy Note:** Direct transfers from Easypaisa/JazzCash to Bank A/C are not accepted.\n\n"
+                    f"Agar aap QR code scan kar ke pay karna chahein toh bata dein, hum JazzCash ya EasyPaisa QR code bhej dete hain!\n\n"
+                    f"Payment ke baad yahan 'paid' ya 'done' likh kar confirm karein aur payment screenshot WhatsApp **03054149002** par bhej dein taake 5-15 minute me order deliver ho sake!"
+                )
+            history.append({"role": "user", "text": message_text})
+            history.append({"role": "model", "text": reply})
+            return reply
+
+    # -------------------------------------------------------------
     # 1. PAYMENT CONFIRMATION FLOW ("paid", "done", "bayan kar diya", etc.)
     # -------------------------------------------------------------
     if is_payment_confirmation(message_text):
@@ -564,6 +628,7 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                 prod_id = matched_item.get("id")
                 prod_title = matched_item.get("title")
                 price = matched_item.get("price_pkr", 0)
+                sku = matched_item.get("sku", "")
 
                 order_id, total = create_wc_order(
                     customer_phone=user_id,
@@ -571,7 +636,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                     product_id=prod_id,
                     quantity=1,
                     product_title=prod_title,
-                    price=price
+                    price=price,
+                    sku=sku
                 )
                 if order_id:
                     update_order_to_processing(order_id)
@@ -581,7 +647,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                         product_id=prod_id,
                         title=prod_title,
                         total=total or str(price),
-                        status="processing"
+                        status="processing",
+                        sku=sku
                     )
                     if user_lang == "en":
                         reply = (
@@ -658,6 +725,7 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
         prod_id = last_discussed.get("id")
         prod_title = last_discussed.get("title")
         price = last_discussed.get("price_pkr", 0)
+        sku = last_discussed.get("sku", "")
 
         if not active_order or active_order.get("product_id") != prod_id or active_order.get("status") != "pending":
             order_id, total = create_wc_order(
@@ -666,7 +734,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                 product_id=prod_id,
                 quantity=1,
                 product_title=prod_title,
-                price=price
+                price=price,
+                sku=sku
             )
             if order_id:
                 set_active_order(
@@ -675,7 +744,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                     product_id=prod_id,
                     title=prod_title,
                     total=total or str(price),
-                    status="pending"
+                    status="pending",
+                    sku=sku
                 )
                 active_order = get_active_order(user_id)
             else:
@@ -720,6 +790,7 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
             prod_id = matched_item.get("id")
             prod_title = matched_item.get("title")
             price = matched_item.get("price_pkr", 0)
+            sku = matched_item.get("sku", "")
 
             if not active_order or active_order.get("product_id") != prod_id or active_order.get("status") != "pending":
                 order_id, total = create_wc_order(
@@ -728,7 +799,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                     product_id=prod_id,
                     quantity=1,
                     product_title=prod_title,
-                    price=price
+                    price=price,
+                    sku=sku
                 )
                 if order_id:
                     set_active_order(
@@ -737,7 +809,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                         product_id=prod_id,
                         title=prod_title,
                         total=total or str(price),
-                        status="pending"
+                        status="pending",
+                        sku=sku
                     )
                     active_order = get_active_order(user_id)
                 else:
