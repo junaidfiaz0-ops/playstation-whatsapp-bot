@@ -38,7 +38,7 @@ MODEL_CANDIDATES = [
 ]
 
 SESSION_STORAGE: Dict[str, dict] = {}
-SESSION_EXPIRY_SECONDS = 7200  # 2 hours session expiry
+SESSION_EXPIRY_SECONDS = 300  # 5 minutes session expiry (customer session resets after 5 min of inactivity)
 
 
 def load_catalog_data() -> dict:
@@ -505,6 +505,9 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
     session_data["language"] = user_lang
     history = session_data["history"]
 
+    ADMIN_WHATSAPP_HIGHLIGHT_EN = "📲 **Admin WhatsApp Live Support: 03054149002** (https://wa.me/923054149002)"
+    ADMIN_WHATSAPP_HIGHLIGHT_UR = "📲 **Admin WhatsApp Live Support: 03054149002** (https://wa.me/923054149002)"
+
     # -------------------------------------------------------------
     # 0. EXIT / GOODBYE FLOW (Do not keep messaging repeatedly)
     # -------------------------------------------------------------
@@ -589,18 +592,20 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                     f"✅ **Thank you!**\n\n"
                     f"Your Order **#{order_id}** ({title}) has been marked as **'Processing'** on our website (*playstationworld.pk*)! 🎮\n\n"
                     f"📸 **Next Step (Payment Verification):**\n"
-                    f"Whether you paid via **Bank Transfer, Raast, JazzCash, EasyPaisa, or QR Code**, please forward your **Payment Screenshot** and **Transaction ID** to our official WhatsApp:\n"
-                    f"👉 **WhatsApp: 03054149002**\n\n"
-                    f"Once verified, our team will dispatch your digital code / account details within 5-15 minutes! Thank you! ✨"
+                    f"Whether you paid via **Bank Transfer, Raast, JazzCash, EasyPaisa, or QR Code**, please forward your **Payment Screenshot** and **Transaction ID** to Admin WhatsApp:\n\n"
+                    f"👉 **ADMIN WHATSAPP LIVE SUPPORT: 03054149002** 👈\n"
+                    f"(Direct Link: https://wa.me/923054149002)\n\n"
+                    f"Once verified on WhatsApp **03054149002**, our team will dispatch your digital code / account details within 5-15 minutes! Thank you! ✨"
                 )
             else:
                 reply = (
                     f"✅ **Bohat Shukriya / Thank you!**\n\n"
                     f"Aapka Order **#{order_id}** ({title}) hamari website (*playstationworld.pk*) par **'Processing'** mark ho chuka hai! 🎮\n\n"
                     f"📸 **Agla Qadam (Payment Verification):**\n"
-                    f"Chahay aapne **Bank Transfer, Raast, JazzCash, EasyPaisa, ya QR Code** ke zariye payment ki ho, baraye meherbani apni payment ka **Screenshot** aur **Transaction ID** foran hamare official WhatsApp par bhej dein:\n"
-                    f"👉 **WhatsApp: 03054149002**\n\n"
-                    f"Hamari team payment verify hotay hi (5-15 minute ke andar) aapka digital code / account details deliver kar degi! Shukriya! ✨"
+                    f"Chahay aapne **Bank Transfer, Raast, JazzCash, EasyPaisa, ya QR Code** ke zariye payment ki ho, baraye meherbani apni payment ka **Screenshot** aur **Transaction ID** foran Admin WhatsApp par bhej dein:\n\n"
+                    f"👉 **ADMIN WHATSAPP LIVE SUPPORT: 03054149002** 👈\n"
+                    f"(Direct Link: https://wa.me/923054149002)\n\n"
+                    f"WhatsApp **03054149002** par verification ke baad (5-15 minute ke andar) aapka digital code / account details deliver kar diye jayenge! Shukriya! ✨"
                 )
             history.append({"role": "user", "text": message_text})
             history.append({"role": "model", "text": reply})
@@ -656,18 +661,20 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                             f"✅ **Thank you!**\n\n"
                             f"Your Order **#{order_id}** ({prod_title}) has been created and marked as **'Processing'** on our website (*playstationworld.pk*)! 🎮\n\n"
                             f"📸 **Next Step (Payment Verification):**\n"
-                            f"Whether you paid via **Bank Transfer, Raast, JazzCash, EasyPaisa, or QR Code**, please send your **Payment Screenshot** and **Transaction ID** to our official WhatsApp:\n"
-                            f"👉 **WhatsApp: 03054149002**\n\n"
-                            f"Once verified, our team will dispatch your code/details within 5-15 minutes! Thank you! ✨"
+                            f"Whether you paid via **Bank Transfer, Raast, JazzCash, EasyPaisa, or QR Code**, please forward your **Payment Screenshot** and **Transaction ID** to Admin WhatsApp:\n\n"
+                            f"👉 **ADMIN WHATSAPP LIVE SUPPORT: 03054149002** 👈\n"
+                            f"(Direct Link: https://wa.me/923054149002)\n\n"
+                            f"Once verified on WhatsApp **03054149002**, our team will dispatch your code/details within 5-15 minutes! Thank you! ✨"
                         )
                     else:
                         reply = (
                             f"✅ **Bohat Shukriya / Thank you!**\n\n"
                             f"Aapka Order **#{order_id}** ({prod_title}) create kar ke hamari website (*playstationworld.pk*) par **'Processing'** mark kar diya gaya hai! 🎮\n\n"
                             f"📸 **Agla Qadam (Payment Verification):**\n"
-                            f"Chahay aapne **Bank Transfer, Raast, JazzCash, EasyPaisa, ya QR Code** ke zariye payment ki ho, baraye meherbani apni payment ka **Screenshot** aur **Transaction ID** foran hamare official WhatsApp par bhej dein:\n"
-                            f"👉 **WhatsApp: 03054149002**\n\n"
-                            f"Hamari team payment verify hotay hi (5-15 minute ke andar) aapka digital code / account details deliver kar degi! Shukriya! ✨"
+                            f"Chahay aapne **Bank Transfer, Raast, JazzCash, EasyPaisa, ya QR Code** ke zariye payment ki ho, baraye meherbani apni payment ka **Screenshot** aur **Transaction ID** foran Admin WhatsApp par bhej dein:\n\n"
+                            f"👉 **ADMIN WHATSAPP LIVE SUPPORT: 03054149002** 👈\n"
+                            f"(Direct Link: https://wa.me/923054149002)\n\n"
+                            f"WhatsApp **03054149002** par verification hotay hi (5-15 minute ke andar) aapka digital code / account details deliver kar diye jayenge! Shukriya! ✨"
                         )
                     history.append({"role": "user", "text": message_text})
                     history.append({"role": "model", "text": reply})

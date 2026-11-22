@@ -44,10 +44,22 @@ def save_orders():
 load_orders()
 
 
+SESSION_EXPIRY_SECONDS = 300  # 5 minutes session expiry
+
+
 def get_active_order(user_id: str) -> Optional[dict]:
-    """Retrieve active order for customer."""
+    """Retrieve active order for customer, respecting 5-minute timeout."""
+    import time
     cid = clean_user_id(user_id)
-    return ACTIVE_ORDERS.get(cid)
+    entry = ACTIVE_ORDERS.get(cid)
+    if entry and isinstance(entry, dict):
+        last_updated = entry.get("updated_at", 0)
+        if last_updated and (time.time() - last_updated > SESSION_EXPIRY_SECONDS):
+            # Session expired after 5 minutes
+            del ACTIVE_ORDERS[cid]
+            save_orders()
+            return None
+    return entry
 
 
 def set_active_order(user_id: str, order_id: str, product_id: Optional[int], title: str, total: str, status: str = "pending", sku: str = ""):
@@ -74,9 +86,11 @@ def set_active_order(user_id: str, order_id: str, product_id: Optional[int], tit
 
 def set_last_discussed_product(user_id: str, product: dict):
     """Store the product currently being inquired about or discussed."""
+    import time
     cid = clean_user_id(user_id)
     if cid not in ACTIVE_ORDERS:
         ACTIVE_ORDERS[cid] = {}
+    ACTIVE_ORDERS[cid]["updated_at"] = time.time()
     ACTIVE_ORDERS[cid]["last_discussed_product"] = {
         "id": product.get("id"),
         "sku": str(product.get("sku") or ""),
@@ -87,10 +101,16 @@ def set_last_discussed_product(user_id: str, product: dict):
 
 
 def get_last_discussed_product(user_id: str) -> Optional[dict]:
-    """Retrieve the last product discussed with the customer."""
+    """Retrieve the last product discussed with the customer, respecting 5-minute timeout."""
+    import time
     cid = clean_user_id(user_id)
     entry = ACTIVE_ORDERS.get(cid)
     if entry and isinstance(entry, dict):
+        last_updated = entry.get("updated_at", 0)
+        if last_updated and (time.time() - last_updated > SESSION_EXPIRY_SECONDS):
+            del ACTIVE_ORDERS[cid]
+            save_orders()
+            return None
         return entry.get("last_discussed_product")
     return None
 
@@ -392,6 +412,26 @@ def detect_item_edition(item: dict) -> str:
     return "Standard Edition"
 
 
+def extract_duration_digits(text: str) -> set:
+    """Extract set of duration digits mentioned in text (e.g. 14 from '14 days', 4 from '4 months')."""
+    words_map = {
+        'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+        'six': '6', 'eight': '8', 'ten': '10', 'twelve': '12', 'thirteen': '13'
+    }
+    t = text.lower()
+    for w, d in words_map.items():
+        t = re.sub(r'\b' + w + r'\b', d, t)
+    # Match standalone numbers or numbers attached to duration keywords (e.g. 14, 1m, 1month)
+    return set(re.findall(r'\b\d+\b', t))
+
+
+def extract_item_duration(item: dict) -> str:
+    """Extract duration string from item title (e.g. '14 Days', '4 Month')."""
+    t = item.get('title', '')
+    m = re.findall(r'\b(?:\d+\s*(?:day|days|month|months|year|years)|(?:one|two|three|four|five|six|eight|ten|twelve)\s*(?:month|months))\b', t, re.I)
+    return m[0].strip().title() if m else ''
+
+
 def extract_franchise_from_title(title: str) -> str:
     """Extract root franchise/game name from a title by stripping modifiers, durations, and platform names."""
     t = re.sub(r'[\/|\\:–-]+', ' ', title)
@@ -569,11 +609,28 @@ def find_product_or_ambiguity(
         if edition_filtered:
             top_candidates = edition_filtered
 
+    # 2.2 Filter candidates by duration if user specified one (e.g. '14 days', '4 month')
+    user_dur_digits = extract_duration_digits(query)
+    if user_dur_digits:
+        dur_filtered = []
+        for it in top_candidates:
+            it_dur_digits = extract_duration_digits(it.get('title', ''))
+            if user_dur_digits & it_dur_digits:
+                dur_filtered.append(it)
+        if dur_filtered:
+            top_candidates = dur_filtered
+
     # 3. Edition Ambiguity Check
     if not user_has_edition and len(top_candidates) > 1:
         editions = set(detect_item_edition(it) for it in top_candidates)
         if len(editions) > 1:
             return None, True, top_candidates[:6], "edition_ambiguous"
+
+    # 4. Duration Ambiguity Check (e.g. asking for "Game Pass Ultimate" or "PS Plus Extra" without duration)
+    if not user_dur_digits and len(top_candidates) > 1:
+        distinct_durs = set(extract_item_duration(it) for it in top_candidates if extract_item_duration(it))
+        if len(distinct_durs) > 1:
+            return None, True, top_candidates[:12], "duration_ambiguous"
 
     # Resolved to a specific product
     if top_candidates:
