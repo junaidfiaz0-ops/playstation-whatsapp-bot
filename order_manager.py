@@ -185,8 +185,11 @@ def is_order_placement_request(text: str) -> bool:
     t = re.sub(r'^(?:firdt|first)\s+', '', t)
     patterns = [
         r"\b(place\s*(the\s*)?order|place\s*it|order\s*it|order\s*this|buy\s*this|order\s*kardo|order\s*kar\s*do|order\s*krdo|order\s*kardein|order\s*lagao|order\s*laga\s*do)\b",
-        r"\b(place\s*order\s*for\s*(me|this\s*game|this)|order\s*for\s*me|on\s*website|website\s*pe|website\s*par|website\s*par\s*order)\b",
+        r"\b(place\s*order\s*for|order\s*for\s*me|on\s*website|website\s*pe|website\s*par|website\s*par\s*order)\b",
         r"\b(like\s*to\s*place\s*order|want\s*to\s*place\s*order|ready\s*to\s*order|order\s*now)\b",
+        r"\b(want\s*to\s*order|want\s*to\s*buy|like\s*to\s*buy|ready\s*to\s*buy|i\s*want\s*to\s*order|i\s*want\s*to\s*buy)\b",
+        r"\b(order|buy)\s+\d+\s*(day|days|month|months|year|years)\b",
+        r"\b(order\s*karna\s*hai|buy\s*karna\s*hai|khareedna\s*hai|kharidna\s*hai|lena\s*hai)\b",
         r"\b(haan\s*(order|place|kardo|kar\s*do)|yes\s*(place|order|please|do\s*it))\b",
         r"^(yes|yes\s*please|yeah|yep|haan|ji|ji\s*haan|kardo|kar\s*do|krdo|kr\s*do|bilkul|confirm|done|order|order\s*now|proceed)$"
     ]
@@ -390,12 +393,14 @@ def detect_item_edition(item: dict) -> str:
 
 
 def extract_franchise_from_title(title: str) -> str:
-    """Extract root franchise/game name from a title by stripping modifiers and platform names."""
-    clean = re.sub(r'\s*\(.*?\)', '', title)
+    """Extract root franchise/game name from a title by stripping modifiers, durations, and platform names."""
+    t = re.sub(r'[\/|\\:–-]+', ' ', title)
+    clean = re.sub(r'\s*\(.*?\)', '', t)
     clean = re.sub(r'\b(Standard|Deluxe|Ultimate|Definitive|Gold|Premium|Essential|Extra|Classics?)\s*(Edition)?\b', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'\b(Xbox\s*One(\s*Series\s*[XS])?|PS4|PS5|PlayStation|PC|Key|Cross-Gen\s*Bundle)\b', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'[\/|\\:–-]+', ' ', clean).strip()
-    return re.sub(r'\s+', ' ', clean)
+    clean = re.sub(r'\b(Xbox|Series|One|[XS]|PS4|PS5|PC|Key|Cross-Gen|Bundle)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b\d+\s*(?:day|days|month|months|year|years)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    return clean
 
 
 def score_product_match(words: list, item: dict, content_words: list = None) -> int:
@@ -487,9 +492,30 @@ def find_product_or_ambiguity(
                     break
 
     scored = []
+    # If customer explicitly mentioned a duration digit (e.g. 14, 1, 2, 4, 12)
+    query_digits = set(re.findall(r'\b\d+\b', query))
+
     for it in all_items:
         s = score_product_match(search_words, it, content_words=effective_content if effective_content else None)
         if s >= 10:
+            if query_digits:
+                it_digits = set(re.findall(r'\b\d+\b', it.get('title', '')))
+                # If product title has the exact duration digit (e.g. 14), grant a strong boost (+100)
+                if query_digits & it_digits:
+                    s += 100
+                elif any(d in ['14', '1', '2', '3', '4', '5', '6', '8', '10', '12', '13'] for d in query_digits):
+                    # Customer specified a different duration, penalize non-matching duration
+                    s -= 60
+
+            # If customer explicitly requested a specific edition (e.g. 'ultimate', 'deluxe', 'standard')
+            if user_has_edition:
+                it_ed = detect_item_edition(it).lower()
+                matching_ed = any(k in it_ed for k in edition_keywords if k in query.lower())
+                if matching_ed:
+                    s += 80
+                else:
+                    s -= 60
+
             scored.append((s, it))
     scored.sort(key=lambda x: x[0], reverse=True)
 
@@ -532,6 +558,16 @@ def find_product_or_ambiguity(
                 filtered.append(it)
         if filtered:
             top_candidates = filtered
+
+    # 2.1 Filter candidates by edition if user specified one (e.g. 'ultimate', 'deluxe', 'standard')
+    if user_has_edition:
+        edition_filtered = []
+        for it in top_candidates:
+            ed = detect_item_edition(it).lower()
+            if any(k in ed for k in edition_keywords if k in query.lower()):
+                edition_filtered.append(it)
+        if edition_filtered:
+            top_candidates = edition_filtered
 
     # 3. Edition Ambiguity Check
     if not user_has_edition and len(top_candidates) > 1:

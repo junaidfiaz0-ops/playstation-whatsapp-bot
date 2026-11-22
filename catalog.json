@@ -1,9 +1,4 @@
 {
-  "bot_profile": {
-    "name": "Jack",
-    "welcome_message": "Hello! I am Jack bot from PlayStation World Multan 🎮. Ask your questions!",
-    "welcome_message_urdu": "AOA! Main Jack hoon PlayStation World Multan se 🎮. Apne sawalat poochein, main aapki poori madad karunga!"
-  },
   "shop_info": {
     "name": "PlayStation World Multan",
     "website": "https://playstationworld.pk",
@@ -13,20 +8,17 @@
     "whatsapp": "+92 305 4149002",
     "timing": "Monday to Sunday: Open 24/7 online orders | Store support: 11:00 AM - 11:30 PM",
     "social_media": {
-      "facebook": "https://facebook.com/playstationworld.pk",
+      "facebook": "https://www.facebook.com/playstationworld.pk",
       "instagram": "https://www.instagram.com/playstationworld.pk",
-      "twitter_x": "https://x.com/Playstationworld",
-      "whatsapp_group_updates": "https://tinyurl.com/uzu7trec",
-      "trustpilot_reviews": "https://www.trustpilot.com/review/playstationworld.pk"
+      "twitter_x": "https://x.com/Playstationworld"
     },
     "payment_methods": {
-      "Bank_Transfer": "Bank Alfalah | A/C: 09131009641388 | IBAN: PK30ALFH0913001009641388 | Title: PLAYSTATION WORLD MULTAN",
-      "Raast_ID": "03054149002 (Title: Junaid Fiaz)",
-      "Easypaisa": "03467146530 (Title: Junaid Fiaz)",
-      "JazzCash_SadaPay_NayaPay": "03054149002 (Title: Junaid Fiaz)",
-      "QR_Code": "JazzCash & EasyPaisa QR code available for quick payment scan",
-      "Policy_Note": "Easypaisa/Jazzcash to Bank A/C not Accepted",
-      "Screenshot_To": "Send payment screenshot to WhatsApp 03054149002"
+      "JazzCash": "0305-4149002 (Title: PlayStation World / Junaid)",
+      "EasyPaisa": "0305-4149002 (Title: PlayStation World / Junaid)",
+      "Raast_Transfers": "Available to 0305-4149002",
+      "Bank_Transfer": "Meezan Bank / Bank Alfalah / Online Bank Transfer (IBAN provided on checkout)",
+      "Debit_Credit_Cards": "Accepted online on playstationworld.pk",
+      "Cash_On_Pickup": "Available at Model Town, Multan store"
     },
     "delivery": {
       "digital_codes": "Instant delivery via WhatsApp & Email (within 5-15 mins after payment verification)",
@@ -91,7 +83,7 @@
         "Transit Time Label: A202304",
         "GTIN: 4251604131522"
       ],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-essential/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-essential-12month/",
       "sku": "A202904"
     },
     {
@@ -101,10 +93,10 @@
         "Xbox One/Series X",
         "Xbox Subscription"
       ],
-      "price_pkr": 3199,
-      "regular_price_pkr": 3500,
-      "price_min_pkr": 3199,
-      "price_max_pkr": 3199,
+      "price_pkr": 2499,
+      "regular_price_pkr": 3000,
+      "price_min_pkr": 2499,
+      "price_max_pkr": 2499,
       "in_stock": true,
       "description": "Free Shipping",
       "options": [
@@ -156,7 +148,7 @@
       "in_stock": true,
       "description": "Free Shipping",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-3/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-5/",
       "sku": "2315"
     },
     {
@@ -173,7 +165,7 @@
       "in_stock": true,
       "description": "Free Shipping",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-7/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-6/",
       "sku": "2313"
     },
     {
@@ -462,15 +454,15 @@
     },
     {
       "id": 593,
-      "title": "Xbox Game Pass Ultimate 1 Month (New Acc)",
+      "title": "Xbox Game Pass Ultimate 14 Days (New Acc)",
       "categories": [
         "Xbox One/Series X",
         "Xbox Subscription"
       ],
-      "price_pkr": 3199,
-      "regular_price_pkr": 4000,
-      "price_min_pkr": 3199,
-      "price_max_pkr": 3199,
+      "price_pkr": 999,
+      "regular_price_pkr": 1500,
+      "price_min_pkr": 999,
+      "price_max_pkr": 999,
       "in_stock": true,
       "description": "Free Shipping",
       "options": [
@@ -481,8 +473,8 @@
         "Transit Time Label: A202337",
         "GTIN: 5054258187391"
       ],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-1-month/",
-      "sku": "A202936"
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-14-days/",
+      "sku": "401217899"
     },
     {
       "id": 557,
@@ -616,7 +608,7 @@
         "Transit Time Label: A202306",
         "GTIN: 5054258187391"
       ],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-13-months/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-12-months/",
       "sku": "A202906"
     },
     {
@@ -640,7 +632,7 @@
         "Transit Time Label: A202305",
         "GTIN: 5054258187391"
       ],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-11-months/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-10-months/",
       "sku": "A202905"
     },
     {
@@ -681,7 +673,7 @@
       "in_stock": true,
       "description": "[vc_row][vc_column][vc_column_text woodmart_inline=&#8221;no&#8221; text_larger=&#8221;no&#8221;]Game Pass Ultimate Get all the benefits of Xbox Live Gold, plus over 100 high-quality console and PC ga",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-1-months-new/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-5month-new/",
       "sku": "511"
     },
     {
@@ -698,7 +690,7 @@
       "in_stock": true,
       "description": "Free Shipping",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-2/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-2month/",
       "sku": "501"
     },
     {
@@ -783,7 +775,7 @@
       "in_stock": true,
       "description": "Free Shipping",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-12/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-13month/",
       "sku": "148"
     },
     {
@@ -793,14 +785,14 @@
         "Xbox One/Series X",
         "Xbox Subscription"
       ],
-      "price_pkr": 8599,
+      "price_pkr": 7999,
       "regular_price_pkr": 9000,
-      "price_min_pkr": 8599,
-      "price_max_pkr": 8599,
+      "price_min_pkr": 7999,
+      "price_max_pkr": 7999,
       "in_stock": true,
-      "description": "3 MONTHS GAME PASS ULTIMATE XBOX ONE / PC For Old Accounts.Old/New Accounts Renew.\nNeed to provide Email Id & Password To Apply Membership.\nIts not code.We Apply membership on your Acc.\nFast delivery\n",
+      "description": "[vc_row][vc_column][vc_column_text woodmart_inline=&#8221;no&#8221; text_larger=&#8221;no&#8221;]Xbox Game Pass Ultimate Subscription\nThe membership lets you enjoy your gaming experience like never be",
       "options": [],
-      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-3-months-renew/",
+      "permalink": "https://playstationworld.pk/product/xbox-game-pass-ultimate-3months-renew/",
       "sku": "145"
     },
     {
@@ -841,7 +833,7 @@
   "games": [
     {
       "id": 3040,
-      "title": "GTA VI Ultimate Edition Pre-Order on Any Account (Xbox Series X|S / PS5 )",
+      "title": "GTA VI Ultimate/Standard Edition Redeem Key (Xbox Series X|S / PS5 )",
       "categories": [
         "PSN Games",
         "Xbox Games"
@@ -849,15 +841,15 @@
       "price_pkr": 22899,
       "regular_price_pkr": 23000,
       "price_min_pkr": 22899,
-      "price_max_pkr": 28899,
+      "price_max_pkr": 27499,
       "in_stock": true,
-      "description": "[vc_row][vc_column][vc_column_text css=&#8221;&#8221; woodmart_inline=&#8221;no&#8221; text_larger=&#8221;no&#8221;]\n\n\n\n\n\n\nGTA VI Ultimate Edition Pre-Order on Personal Account.\nNote:\nFor Xbox You get",
+      "description": "[vc_row][vc_column][vc_column_text woodmart_inline=&#8221;no&#8221; text_larger=&#8221;no&#8221;]\n\n\n\n\n\n\nGTA VI Ultimate/Standard Edition Redeem Key (Xbox Series X|S / PS5 )\n\nFor Xbox You get Redeem ke",
       "options": [
         "Brand: PlayStation, Series X|S",
         "Package: Standard, Ultimate"
       ],
-      "permalink": "https://playstationworld.pk/product/gta-vi-ultimate-edition-pre-order-on-personal-account-xbox-series-ps5/",
-      "sku": "GTA-VI-KEY"
+      "permalink": "https://playstationworld.pk/product/gta-vi-ultimate-edition-key-xbox-series-ps5/",
+      "sku": "3040"
     },
     {
       "id": 2897,
@@ -3157,7 +3149,7 @@
         "GTIN: 662248923567"
       ],
       "permalink": "https://playstationworld.pk/product/what-remains-of-edith-finch-xbox-one/",
-      "sku": "401217933"
+      "sku": "A202970"
     },
     {
       "id": 643,
@@ -3327,10 +3319,10 @@
         "Xbox Games",
         "Xbox One/Series X"
       ],
-      "price_pkr": 6999,
-      "regular_price_pkr": 7000,
-      "price_min_pkr": 6999,
-      "price_max_pkr": 6999,
+      "price_pkr": 8699,
+      "regular_price_pkr": 10000,
+      "price_min_pkr": 8699,
+      "price_max_pkr": 8699,
       "in_stock": true,
       "description": "Free Shipping",
       "options": [
@@ -3855,10 +3847,10 @@
         "Xbox Games",
         "Xbox One/Series X"
       ],
-      "price_pkr": 1699,
+      "price_pkr": 1899,
       "regular_price_pkr": 2000,
-      "price_min_pkr": 1699,
-      "price_max_pkr": 1699,
+      "price_min_pkr": 1899,
+      "price_max_pkr": 1899,
       "in_stock": true,
       "description": "Free Shipping",
       "options": [

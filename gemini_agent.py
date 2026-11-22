@@ -580,7 +580,8 @@ def handle_incoming_message(user_id: str, message_text: str, customer_name: str 
                 product_id=active_order.get("product_id"),
                 title=title,
                 total=active_order.get("total", "0"),
-                status="processing"
+                status="processing",
+                sku=active_order.get("sku", "")
             )
 
             if user_lang == "en":

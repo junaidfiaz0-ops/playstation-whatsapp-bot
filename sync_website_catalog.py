@@ -134,8 +134,19 @@ def main():
             if terms:
                 attr_summary.append(f"{attr_name}: {', '.join(terms)}")
 
+        # Extract SKU
+        raw_sku = str(p.get("sku", "") or "").strip()
+        if not raw_sku:
+            for opt in attr_summary:
+                if "MPN:" in str(opt):
+                    raw_sku = opt.split("MPN:")[1].strip()
+                    break
+        if not raw_sku:
+            raw_sku = str(p_id)
+
         item_data = {
             "id": p_id,
+            "sku": raw_sku,
             "title": name,
             "categories": categories,
             "price_pkr": base_price,
